@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   statSync,
@@ -12,14 +13,16 @@ import {
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DiscoveryLimitError,
   buildModuleTargetGraph,
   discoverProject,
   discoverProjectWithMetrics,
+  clearDiscoveryCache,
   importResolutionStatus,
   type ModuleRecord,
+  type ProjectModel,
 } from './discovery.js';
 
 const roots: string[] = [];
@@ -574,7 +577,7 @@ export const key = process.env['API_KEY'];
     writeFileSync(join(root, 'package.json'), '{\n  "name": "cache",\n  "scripts": {}\n}\n');
     discoverProject(root);
     const refreshedCache = JSON.parse(readFileSync(cachePath, 'utf8')) as { version?: unknown };
-    expect(refreshedCache.version).toBe(5);
+    expect(refreshedCache.version).toBe(6);
   });
 
   it('does not persist discovery cache through a symlinked Guard directory', () => {
@@ -614,5 +617,187 @@ export const key = process.env['API_KEY'];
     writeFileSync(join(root, 'README.md'), '# unchanged source set\n');
     const metadataRefresh = discoverProjectWithMetrics(root);
     expect(metadataRefresh.metrics.reusedModules).toBe(1);
+  });
+});
+
+/** Discovery in a fresh module instance, so only the persisted cache carries over, as in a new process. */
+async function discoverInFreshProcess(root: string): Promise<ProjectModel> {
+  vi.resetModules();
+  const fresh = await import('./discovery.js');
+  return fresh.discoverProject(root, { persistCache: true });
+}
+
+function resolutionView(model: ProjectModel): unknown {
+  return {
+    modules: model.modules.map((module) => ({
+      path: module.path,
+      resolvedImportMap: module.resolvedImportMap,
+      unresolvedImports: module.unresolvedImports,
+    })),
+    edges: model.insights.dependencyEdges,
+  };
+}
+
+function aliasProject(prefix: string): string {
+  // TypeScript reports symlink targets by real path, and the macOS temp directory is a symlink.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  roots.push(root);
+  mkdirSync(join(root, 'a'), { recursive: true });
+  mkdirSync(join(root, 'b'), { recursive: true });
+  writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'alias-cache' }));
+  writeFileSync(
+    join(root, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@lib/*': ['a/*'] } } }),
+  );
+  writeFileSync(join(root, 'a/lib.ts'), 'export const lib = "a";\n');
+  writeFileSync(join(root, 'b/lib.ts'), 'export const lib = "b";\n');
+  writeFileSync(join(root, 'entry.ts'), "import { lib } from '@lib/lib';\nexport { lib };\n");
+  return root;
+}
+
+function retargetAlias(root: string): void {
+  writeFileSync(
+    join(root, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@lib/*': ['b/*'] } } }),
+  );
+}
+
+describe('discovery cache and resolution inputs', () => {
+  it('re-resolves imports after a committed tsconfig alias change', async () => {
+    const root = aliasProject('guard-cache-committed-alias-');
+    const git = (args: string[]): void => {
+      execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+    };
+    git(['init', '-q']);
+    git(['config', 'user.email', 'guard@example.test']);
+    git(['config', 'user.name', 'Guard Test']);
+    git(['add', '.']);
+    git(['commit', '-qm', 'initial']);
+    const before = await discoverInFreshProcess(root);
+    expect(before.modules.find((module) => module.path === 'entry.ts')?.resolvedImports).toEqual([
+      'a/lib.ts',
+    ]);
+
+    retargetAlias(root);
+    git(['commit', '-qam', 'retarget alias']);
+    const after = await discoverInFreshProcess(root);
+
+    expect(after.modules.find((module) => module.path === 'entry.ts')?.resolvedImports).toEqual([
+      'b/lib.ts',
+    ]);
+  });
+
+  it('re-resolves imports after a tsconfig alias change in a project without git', async () => {
+    const root = aliasProject('guard-cache-nogit-alias-');
+    await discoverInFreshProcess(root);
+
+    retargetAlias(root);
+    const inProcess = discoverProject(root, { persistCache: true });
+    const fresh = await discoverInFreshProcess(root);
+
+    for (const model of [inProcess, fresh]) {
+      expect(model.modules.find((module) => module.path === 'entry.ts')?.resolvedImports).toEqual([
+        'b/lib.ts',
+      ]);
+    }
+  });
+
+  it('keeps reused modules consistent with a cold discovery across resolution edits', async () => {
+    const root = aliasProject('guard-cache-consistency-');
+    mkdirSync(join(root, 'packages/shared/src'), { recursive: true });
+    mkdirSync(join(root, 'node_modules/@demo'), { recursive: true });
+    writeFileSync(
+      join(root, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          baseUrl: '.',
+          module: 'esnext',
+          moduleResolution: 'bundler',
+          paths: { '@lib/*': ['a/*'] },
+        },
+      }),
+    );
+    writeFileSync(
+      join(root, 'packages/shared/package.json'),
+      JSON.stringify({ name: '@demo/shared', exports: { '.': './src/one.ts' } }),
+    );
+    writeFileSync(join(root, 'packages/shared/src/one.ts'), 'export const shared = 1;\n');
+    writeFileSync(join(root, 'packages/shared/src/two.ts'), 'export const shared = 2;\n');
+    symlinkSync(join(root, 'packages/shared'), join(root, 'node_modules/@demo/shared'));
+    writeFileSync(
+      join(root, 'consumer.ts'),
+      [
+        "import { lib } from '@lib/lib';",
+        "import { shared } from '@demo/shared';",
+        "import { later } from './later';",
+        "import './styles.css';",
+        'export { lib, shared, later };',
+        '',
+      ].join('\n'),
+    );
+    const cold = async (): Promise<ProjectModel> => {
+      clearDiscoveryCache(root);
+      const model = await discoverInFreshProcess(root);
+      clearDiscoveryCache(root);
+      return model;
+    };
+    const edits: [string, () => void][] = [
+      [
+        'alias retarget',
+        () => {
+          const tsconfig = JSON.parse(readFileSync(join(root, 'tsconfig.json'), 'utf8')) as {
+            compilerOptions: { paths: Record<string, string[]> };
+          };
+          tsconfig.compilerOptions.paths['@lib/*'] = ['b/*'];
+          writeFileSync(join(root, 'tsconfig.json'), JSON.stringify(tsconfig));
+        },
+      ],
+      [
+        'package.json exports change',
+        () =>
+          writeFileSync(
+            join(root, 'packages/shared/package.json'),
+            JSON.stringify({ name: '@demo/shared', exports: { '.': './src/two.ts' } }),
+          ),
+      ],
+      [
+        'source file added',
+        () => writeFileSync(join(root, 'later.ts'), 'export const later = 1;\n'),
+      ],
+      ['asset added', () => writeFileSync(join(root, 'styles.css'), 'body {}\n')],
+      ['source file removed', () => rmSync(join(root, 'later.ts'))],
+    ];
+
+    await discoverInFreshProcess(root);
+    for (const [name, edit] of edits) {
+      edit();
+      const inProcess = discoverProject(root, { persistCache: true });
+      const fresh = await discoverInFreshProcess(root);
+      const expected = resolutionView(await cold());
+      expect(resolutionView(inProcess), name).toEqual(expected);
+      expect(resolutionView(fresh), name).toEqual(expected);
+      // Seed the persisted cache for the next edit.
+      await discoverInFreshProcess(root);
+    }
+    const consumer = discoverProject(root).modules.find((module) => module.path === 'consumer.ts');
+    expect(consumer?.resolvedImportMap).toMatchObject({
+      '@lib/lib': 'b/lib.ts',
+      '@demo/shared': 'packages/shared/src/two.ts',
+    });
+    expect(consumer?.unresolvedImports).toEqual(['./later']);
+  });
+
+  it('keeps reusing modules when only files outside resolution inputs change', async () => {
+    const root = aliasProject('guard-cache-reuse-');
+    await discoverInFreshProcess(root);
+    writeFileSync(join(root, 'notes.md'), '# notes\n');
+    writeFileSync(join(root, 'a/lib.ts'), 'export const lib = "a2";\n');
+
+    vi.resetModules();
+    const fresh = await import('./discovery.js');
+    const result = fresh.discoverProjectWithMetrics(root, { persistCache: true });
+
+    expect(result.metrics.cacheHit).toBe(false);
+    expect(result.metrics.reusedModules).toBe(2);
   });
 });

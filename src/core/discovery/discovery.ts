@@ -202,12 +202,15 @@ const CONFIG_NAMES = new Set([
   'playwright.config.ts',
 ]);
 
-const discoveryCache = new Map<string, { signature: string; model: ProjectModel }>();
+const discoveryCache = new Map<
+  string,
+  { signature: string; resolutionFingerprint: string; model: ProjectModel }
+>();
 const discoveryReuse = new Map<string, number>();
 const discoveryCacheHits = new Map<string, boolean>();
 // Bump when the persisted model shape changes; old cache entries must never
 // bypass discovery and return an incomplete ProjectModel.
-const DISCOVERY_CACHE_VERSION = 5;
+const DISCOVERY_CACHE_VERSION = 6;
 
 function discoveryCachePath(root: string): string {
   return resolve(root, `.${config.appName}/guard/cache.json`);
@@ -236,6 +239,27 @@ function contentHash(root: string, path: string): string {
   return createHash('sha256')
     .update(readFileSync(resolve(root, path)))
     .digest('hex');
+}
+
+const RESOLUTION_CONFIG_NAME =
+  /^(?:(?:tsconfig|jsconfig)(?:\..+)?\.json|package\.json|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/;
+
+/**
+ * Fingerprint of everything JS/TS import resolution reads: the content of compiler configs,
+ * package manifests, and lockfiles, plus the paths of files a specifier can resolve to. Module
+ * records are reused only while it is unchanged. A dependency install that leaves the lockfile
+ * unchanged is not detected.
+ */
+function resolutionFingerprint(root: string, allFiles: string[]): string {
+  const hash = createHash('sha256');
+  for (const path of [...allFiles].sort()) {
+    const resolutionConfig = RESOLUTION_CONFIG_NAME.test(basename(path));
+    const extension = extname(path);
+    if (!resolutionConfig && !JS_TS_SOURCE_EXTENSIONS.has(extension) && extension !== '.json')
+      continue;
+    hash.update(`${path}\0${resolutionConfig ? contentHash(root, path) : ''}\n`);
+  }
+  return hash.digest('hex');
 }
 
 function ignoredFile(path: string): boolean {
@@ -537,7 +561,6 @@ function parseJsTsModule(
   path: string,
   projectFiles: Set<string>,
   aliases: PathAlias[],
-  workspaceNames: ReadonlySet<string>,
 ): ModuleRecord | undefined {
   let sourceFile: SourceFile;
   try {
@@ -638,14 +661,6 @@ function parseJsTsModule(
     calls: [...new Set(calls)].sort(),
     resolvedImports: [...resolvedImports].sort(),
     resolvedImportMap,
-    unresolvedImports: unresolvedJsTsImports(
-      path,
-      [...new Set([...imports, ...exports, ...dynamicImports])],
-      resolvedImportMap,
-      projectFiles,
-      aliases,
-      workspaceNames,
-    ),
     importLines,
     dynamicImports: [...new Set(dynamicImports)].sort(),
     declarations,
@@ -659,11 +674,34 @@ function parseModule(
   path: string,
   projectFiles: Set<string>,
   aliases: PathAlias[],
-  workspaceNames: ReadonlySet<string>,
 ): ModuleRecord | undefined {
   return sourceLanguage(path) === 'js-ts'
-    ? parseJsTsModule(project, root, path, projectFiles, aliases, workspaceNames)
+    ? parseJsTsModule(project, root, path, projectFiles, aliases)
     : undefined;
+}
+
+/**
+ * Adds `unresolvedImports` to a parsed or reused module. It runs on every discovery because the
+ * result depends on non-source files, such as `./styles.css`, that do not invalidate module reuse.
+ */
+function withImportStatus(
+  module: ModuleRecord,
+  projectFiles: Set<string>,
+  aliases: PathAlias[],
+  workspaceNames: ReadonlySet<string>,
+): ModuleRecord {
+  if (sourceLanguage(module.path) !== 'js-ts') return module;
+  return {
+    ...module,
+    unresolvedImports: unresolvedJsTsImports(
+      module.path,
+      [...new Set([...module.imports, ...module.exports, ...module.dynamicImports])],
+      module.resolvedImportMap ?? {},
+      projectFiles,
+      aliases,
+      workspaceNames,
+    ),
+  };
 }
 
 export type ImportResolutionStatus = 'resolved' | 'unresolved' | 'external';
@@ -1325,22 +1363,30 @@ function discoverProjectOnce(
     return cached.model;
   }
   let previousModel = cached?.model;
+  let previousFingerprint = cached?.resolutionFingerprint;
   try {
     const persisted = JSON.parse(readFileSync(discoveryCachePath(root), 'utf8')) as {
       version?: unknown;
       signature?: unknown;
+      resolutionFingerprint?: unknown;
       model?: unknown;
     };
     if (
       persisted.version === DISCOVERY_CACHE_VERSION &&
+      typeof persisted.resolutionFingerprint === 'string' &&
       persisted.model !== null &&
       typeof persisted.model === 'object' &&
       (persisted.model as { version?: unknown }).version === 1
     ) {
       previousModel = persisted.model as ProjectModel;
+      previousFingerprint = persisted.resolutionFingerprint;
       if (persisted.signature === signature) {
         discoveryCacheHits.set(cacheKey, true);
-        discoveryCache.set(cacheKey, { signature, model: previousModel });
+        discoveryCache.set(cacheKey, {
+          signature,
+          resolutionFingerprint: previousFingerprint,
+          model: previousModel,
+        });
         discoveryReuse.set(cacheKey, previousModel.modules.length);
         return previousModel;
       }
@@ -1361,22 +1407,8 @@ function discoverProjectOnce(
     workspaces.flatMap((workspace) => (workspace.name ? [workspace.name] : [])),
   );
   const previousModules = new Map(previousModel?.modules.map((module) => [module.path, module]));
-  const currentShape = files
-    .filter((file) => file.kind === 'source' || file.kind === 'test')
-    .map((file) => `${file.kind}:${file.path}`)
-    .join('\n');
-  const previousShape = previousModel?.files
-    .filter((file) => file.kind === 'source' || file.kind === 'test')
-    .map((file) => `${file.kind}:${file.path}`)
-    .join('\n');
-  const changedGitFiles = [
-    ...(runGit(root, ['diff', '--name-only', 'HEAD'])?.split('\n') ?? []),
-    ...(runGit(root, ['ls-files', '--others', '--exclude-standard'])?.split('\n') ?? []),
-  ].filter(Boolean);
-  const resolutionConfigChanged = changedGitFiles.some((path) =>
-    /(?:^|\/)(?:tsconfig|jsconfig)\.json$/.test(path),
-  );
-  const canReuseModules = previousShape === currentShape && !resolutionConfigChanged;
+  const currentFingerprint = resolutionFingerprint(root, allFiles);
+  const canReuseModules = previousFingerprint === currentFingerprint;
   let reusedModules = 0;
   const modules = files
     .filter((file) => file.kind === 'source' || file.kind === 'test')
@@ -1386,9 +1418,10 @@ function discoverProjectOnce(
         reusedModules += 1;
         return previous;
       }
-      return parseModule(astProject, root, file.path, projectFiles, aliases, workspaceNames);
+      return parseModule(astProject, root, file.path, projectFiles, aliases);
     })
-    .filter((module): module is ModuleRecord => module !== undefined);
+    .filter((module): module is ModuleRecord => module !== undefined)
+    .map((module) => withImportStatus(module, projectFiles, aliases, workspaceNames));
   const sourceFiles = files.filter((file) => file.kind === 'source').map((file) => file.path);
   const testFiles = files.filter((file) => file.kind === 'test').map((file) => file.path);
   const configs = files.filter((file) => file.kind === 'config').map((file) => file.path);
@@ -1459,7 +1492,7 @@ function discoverProjectOnce(
     if (attempt < 2) return discoverProjectOnce(root, options, attempt + 1);
     throw new DiscoveryStaleError();
   }
-  discoveryCache.set(cacheKey, { signature, model });
+  discoveryCache.set(cacheKey, { signature, resolutionFingerprint: currentFingerprint, model });
   discoveryReuse.set(cacheKey, reusedModules);
   if (
     canPersistDiscoveryCache(root) &&
@@ -1471,7 +1504,16 @@ function discoverProjectOnce(
       const temporaryPath = `${cachePath}.tmp-${process.pid}`;
       writeFileSync(
         temporaryPath,
-        `${JSON.stringify({ version: DISCOVERY_CACHE_VERSION, signature, model }, null, 2)}\n`,
+        `${JSON.stringify(
+          {
+            version: DISCOVERY_CACHE_VERSION,
+            signature,
+            resolutionFingerprint: currentFingerprint,
+            model,
+          },
+          null,
+          2,
+        )}\n`,
         'utf8',
       );
       renameSync(temporaryPath, cachePath);
