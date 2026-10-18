@@ -943,7 +943,8 @@ describe('Python project discovery', () => {
       'web/src/app.ts',
     ]);
     expect(model.insights.dependencyEdges).toEqual([
-      expect.objectContaining({ from: 'web/src/app.ts', to: 'web/src/api.ts' }),
+      { from: 'services/api/app/main.py', to: 'services/api/app/routes.py' },
+      { from: 'web/src/app.ts', to: 'web/src/api.ts' },
     ]);
     expect(pythonProjectRoots(model.files.map((file) => file.path))).toEqual([
       'libs/legacy',
@@ -1025,8 +1026,6 @@ describe('Python module parsing', () => {
       dynamicImports: [],
       calls: [],
       directives: [],
-      resolvedImports: [],
-      resolvedImportMap: {},
       declarations: { classes: 1, functions: 1, interfaces: 0, types: 0, variables: 1 },
     });
     expect(views?.pythonImports).toEqual([
@@ -1038,7 +1037,9 @@ describe('Python module parsing', () => {
       { module: '.db', names: ['cache'], line: 8 },
     ]);
     expect(views?.parseDiagnostics).toBeUndefined();
-    expect(views?.unresolvedImports).toBeUndefined();
+    // Resolution (Task 05) finds no target: app/db and app/services.py do not exist.
+    expect(views?.resolvedImportMap).toEqual({});
+    expect(views?.unresolvedImports).toEqual(['.db', 'app.services']);
     expect(importResolutionStatus(views!, '.db')).toBe('unresolved');
     expect(importResolutionStatus(views!, 'os.path')).toBe('external');
     expect(model.insights.dependencyEdges).toEqual([]);
@@ -1080,5 +1081,80 @@ describe('Python module parsing', () => {
     writeFileSync(join(root, 'src/tool.py'), 'import os\n');
     discovery.discoverProject(root, { persistCache: false });
     expect(parser.isPythonParserLoaded()).toBe(true);
+  });
+});
+
+describe('Python import resolution in discovery', () => {
+  it('builds Python edges, cycles, statuses, and hotspots of external packages only', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-graph-'));
+    roots.push(root);
+    writeTree(root, {
+      'pyproject.toml': '',
+      'app/__init__.py': '',
+      'app/services.py': 'import requests\nfrom app import repository\n',
+      'app/repository.py': 'import requests\nfrom .services import helper\n',
+      'app/views.py': 'from app import services\nimport app.services\nimport requests\n',
+      'web/index.ts': "import { x } from './x';\n",
+      'web/x.ts': 'export const x = 1;\n',
+      'web/x.py': '',
+    });
+
+    const model = discoverProject(root, { persistCache: false });
+    const views = model.modules.find((module) => module.path === 'app/views.py')!;
+
+    expect(model.insights.dependencyEdges).toEqual([
+      { from: 'app/repository.py', to: 'app/services.py' },
+      { from: 'app/services.py', to: 'app/repository.py' },
+      { from: 'app/views.py', to: 'app/services.py' },
+      { from: 'web/index.ts', to: 'web/x.ts' },
+    ]);
+    expect(model.insights.cycles).toEqual([['app/repository.py', 'app/services.py']]);
+    expect(importResolutionStatus(views, 'app')).toBe('resolved');
+    expect(importResolutionStatus(views, 'app.services')).toBe('resolved');
+    expect(importResolutionStatus(views, 'requests')).toBe('external');
+    expect(model.insights.importHotspots).toEqual([{ module: 'requests', count: 3 }]);
+    expect(
+      model.modules.find((module) => module.path === 'app/repository.py')?.canonicalImports,
+    ).toEqual({ '.services': 'app.services' });
+  });
+
+  it('re-resolves reused Python records when files and project roots change', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'guard-python-fresh-')));
+    roots.push(root);
+    writeTree(root, {
+      'main.py': 'import billing.service\nfrom shared import util\n',
+      'shared/__init__.py': '',
+    });
+    await discoverInFreshProcess(root);
+
+    writeTree(root, { 'billing/service.py': '' });
+    const added = discoverProjectWithMetrics(root, { persistCache: true });
+    const fresh = await discoverInFreshProcess(root);
+    for (const model of [added.model, fresh]) {
+      expect(model.modules.find((module) => module.path === 'main.py')?.resolvedImportMap).toEqual({
+        'billing.service': 'billing/service.py',
+        shared: 'shared/__init__.py',
+      });
+    }
+    expect(added.metrics.reusedModules).toBeGreaterThan(0);
+
+    // A nested project root with its own regular `shared` package now wins for files inside it.
+    writeTree(root, {
+      'tools/pyproject.toml': '',
+      'tools/cli.py': 'from shared import util\n',
+      'tools/shared/__init__.py': '',
+      'tools/shared/util.py': '',
+    });
+    const rooted = await discoverInFreshProcess(root);
+    expect(
+      rooted.modules.find((module) => module.path === 'tools/cli.py')?.resolvedImportMap,
+    ).toEqual({ 'shared.util': 'tools/shared/util.py' });
+
+    rmSync(join(root, 'billing/service.py'));
+    const removed = await discoverInFreshProcess(root);
+    const main = removed.modules.find((module) => module.path === 'main.py');
+    expect(main?.resolvedImportMap).toEqual({ shared: 'shared/__init__.py' });
+    expect(main?.unresolvedImports).toEqual([]);
+    expect(importResolutionStatus(main!, 'billing.service')).toBe('external');
   });
 });

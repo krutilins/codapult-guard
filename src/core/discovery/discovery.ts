@@ -15,6 +15,11 @@ import { basename, dirname, extname, join, normalize, relative, resolve } from '
 import { Project, SyntaxKind, type SourceFile } from 'ts-morph';
 import { config } from '../config.js';
 import { parsePythonSource, type PythonImportFact } from './python-imports.js';
+import {
+  pythonResolutionIndex,
+  resolvePythonImports,
+  type PythonResolutionIndex,
+} from './python-resolution.js';
 
 export interface ProjectFileRecord {
   path: string;
@@ -48,6 +53,8 @@ export interface ModuleRecord {
   pythonImports?: PythonImportFact[] | undefined;
   /** Up to 5 lines with syntax error nodes. Informational; never produces findings (D3). */
   parseDiagnostics?: number[] | undefined;
+  /** Absolute dotted name of each convertible Python relative import spelling (D7, D9). */
+  canonicalImports?: Record<string, string> | undefined;
 }
 
 export interface CapabilitySignal {
@@ -776,6 +783,21 @@ function parseModule(
   return undefined;
 }
 
+/** Replaces a Python module's resolution fields with a fresh resolution of its parse facts (D18). */
+function withPythonResolution(module: ModuleRecord, index: PythonResolutionIndex): ModuleRecord {
+  if (module.pythonImports === undefined) return module;
+  const { canonicalImports, ...resolution } = resolvePythonImports(
+    module.path,
+    module.pythonImports,
+    index,
+  );
+  return {
+    ...module,
+    ...resolution,
+    canonicalImports: Object.keys(canonicalImports).length > 0 ? canonicalImports : undefined,
+  };
+}
+
 /**
  * Adds `unresolvedImports` to a parsed or reused module. It runs on every discovery because the
  * result depends on non-source files, such as `./styles.css`, that do not invalidate module reuse.
@@ -807,8 +829,8 @@ export type ImportResolutionStatus = 'resolved' | 'unresolved' | 'external';
  *
  * `resolved` means the specifier resolves to a project file, which may be a non-module file such
  * as a stylesheet. JS/TS relative specifiers are always either resolved or listed as unresolved,
- * because the path fallback resolves them when the parser does not. A Python relative import
- * without a target is unresolved. `external` means outside the module graph by static rules; it
+ * because the path fallback resolves them when the parser does not. A Python `from X import n`
+ * spelling is resolved when every name resolved as a submodule, since `X` itself is not needed. `external` means outside the module graph by static rules; it
  * does not mean the package is installed.
  */
 export function importResolutionStatus(
@@ -817,8 +839,16 @@ export function importResolutionStatus(
 ): ImportResolutionStatus {
   if (module.resolvedImportMap?.[specifier] !== undefined) return 'resolved';
   if (module.unresolvedImports?.includes(specifier)) return 'unresolved';
-  if (!specifier.startsWith('.')) return 'external';
-  return sourceLanguage(module.path) === 'python' ? 'unresolved' : 'resolved';
+  if (sourceLanguage(module.path) === 'python') {
+    // `from app import services` needs only the derived `app.services`, not `app` itself.
+    const prefix = specifier.endsWith('.') ? specifier : `${specifier}.`;
+    const satisfiedByChildren = Object.keys(module.resolvedImportMap ?? {}).some(
+      (key) => key.startsWith(prefix) && /^[^.]+$/.test(key.slice(prefix.length)),
+    );
+    if (satisfiedByChildren) return 'resolved';
+    return specifier.startsWith('.') ? 'unresolved' : 'external';
+  }
+  return specifier.startsWith('.') ? 'resolved' : 'external';
 }
 
 function runGit(root: string, args: string[]): string | undefined {
@@ -1279,7 +1309,10 @@ function buildInsights(
   for (const paths of Object.values(layers)) paths.sort();
   const importCounts = new Map<string, number>();
   for (const module of modules) {
+    const python = module.pythonImports !== undefined;
     for (const importPath of module.imports) {
+      // Python local imports have no `.` or `@/` marker, so their resolution status decides.
+      if (python && importResolutionStatus(module, importPath) !== 'external') continue;
       if (!importPath.startsWith('.') && !importPath.startsWith('@/')) {
         importCounts.set(importPath, (importCounts.get(importPath) ?? 0) + 1);
       }
@@ -1509,7 +1542,7 @@ function discoverProjectOnce(
   const currentFingerprint = resolutionFingerprint(root, allFiles);
   const canReuseModules = previousFingerprint === currentFingerprint;
   let reusedModules = 0;
-  const modules = files
+  let modules = files
     .filter((file) => file.kind === 'source' || file.kind === 'test')
     .map((file) => {
       const previous = canReuseModules ? previousModules.get(file.path) : undefined;
@@ -1521,6 +1554,12 @@ function discoverProjectOnce(
     })
     .filter((module): module is ModuleRecord => module !== undefined)
     .map((module) => withImportStatus(module, projectFiles, aliases, workspaceNames));
+  const pythonIndex = modules.some((module) => module.pythonImports !== undefined)
+    ? pythonResolutionIndex(allFiles, pythonProjectRoots(allFiles))
+    : undefined;
+  if (pythonIndex) {
+    modules = modules.map((module) => withPythonResolution(module, pythonIndex));
+  }
   const sourceFiles = files.filter((file) => file.kind === 'source').map((file) => file.path);
   const testFiles = files.filter((file) => file.kind === 'test').map((file) => file.path);
   const configs = files.filter((file) => file.kind === 'config').map((file) => file.path);
