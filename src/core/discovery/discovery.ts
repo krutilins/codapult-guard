@@ -30,6 +30,8 @@ export interface ModuleRecord {
   calls: string[];
   resolvedImports: string[];
   resolvedImportMap?: Record<string, string> | undefined;
+  /** Specifiers that look local by the language's static rules but resolve to no project file. */
+  unresolvedImports?: string[] | undefined;
   /** 1-based line of the first import, re-export, or dynamic import of each module specifier. */
   importLines?: Record<string, number> | undefined;
   dynamicImports: string[];
@@ -205,7 +207,7 @@ const discoveryReuse = new Map<string, number>();
 const discoveryCacheHits = new Map<string, boolean>();
 // Bump when the persisted model shape changes; old cache entries must never
 // bypass discovery and return an incomplete ProjectModel.
-const DISCOVERY_CACHE_VERSION = 4;
+const DISCOVERY_CACHE_VERSION = 5;
 
 function discoveryCachePath(root: string): string {
   return resolve(root, `.${config.appName}/guard/cache.json`);
@@ -388,13 +390,27 @@ function sourceLanguage(path: string): SourceLanguage | undefined {
   return undefined;
 }
 
-/** JS/TS resolution candidates for a path base. Another language's source file is never one. */
+/**
+ * JS/TS resolution candidates for a project-relative path base. Another language's source file is
+ * never one. A trailing slash limits the candidates to the directory index, and `.` or an empty
+ * base names the project root.
+ */
 function jsTsResolutionCandidates(base: string): string[] {
-  const baseLanguage = sourceLanguage(base);
+  const directoryOnly = base.endsWith('/');
+  const trimmed = base.replace(/\/+$/, '');
+  const isRoot = trimmed === '' || trimmed === '.';
+  const indexBase = isRoot ? 'index' : `${trimmed}/index`;
+  const baseLanguage = sourceLanguage(trimmed);
+  const fileCandidates =
+    directoryOnly || isRoot
+      ? []
+      : [
+          ...(baseLanguage === undefined || baseLanguage === 'js-ts' ? [trimmed] : []),
+          ...[...JS_TS_SOURCE_EXTENSIONS].map((extension) => `${trimmed}${extension}`),
+        ];
   return [
-    ...(baseLanguage === undefined || baseLanguage === 'js-ts' ? [base] : []),
-    ...[...JS_TS_SOURCE_EXTENSIONS].map((extension) => `${base}${extension}`),
-    ...[...JS_TS_SOURCE_EXTENSIONS].map((extension) => `${base}/index${extension}`),
+    ...fileCandidates,
+    ...[...JS_TS_SOURCE_EXTENSIONS].map((extension) => `${indexBase}${extension}`),
   ];
 }
 
@@ -445,6 +461,20 @@ function pathAliases(root: string): PathAlias[] {
     });
 }
 
+function aliasParts(alias: PathAlias): { prefix: string; suffix: string } {
+  const wildcard = alias.pattern.indexOf('*');
+  return wildcard >= 0
+    ? { prefix: alias.pattern.slice(0, wildcard), suffix: alias.pattern.slice(wildcard + 1) }
+    : { prefix: alias.pattern, suffix: '' };
+}
+
+/** The text an alias wildcard matches, or undefined when the specifier does not match the alias. */
+function aliasReplacement(alias: PathAlias, importPath: string): string | undefined {
+  const { prefix, suffix } = aliasParts(alias);
+  if (!importPath.startsWith(prefix) || (suffix && !importPath.endsWith(suffix))) return undefined;
+  return importPath.slice(prefix.length, importPath.length - suffix.length);
+}
+
 function resolveAliasedImport(
   root: string,
   importPath: string,
@@ -452,11 +482,8 @@ function resolveAliasedImport(
   modules: Set<string>,
 ): string | undefined {
   for (const alias of aliases) {
-    const wildcard = alias.pattern.indexOf('*');
-    const prefix = wildcard >= 0 ? alias.pattern.slice(0, wildcard) : alias.pattern;
-    const suffix = wildcard >= 0 ? alias.pattern.slice(wildcard + 1) : '';
-    if (!importPath.startsWith(prefix) || (suffix && !importPath.endsWith(suffix))) continue;
-    const replacement = importPath.slice(prefix.length, importPath.length - suffix.length);
+    const replacement = aliasReplacement(alias, importPath);
+    if (replacement === undefined) continue;
     for (const target of alias.targets) {
       const targetPath = target.replace('*', replacement);
       const absoluteBase = resolve(alias.baseDirectory, targetPath);
@@ -471,12 +498,46 @@ function resolveAliasedImport(
   return undefined;
 }
 
+/**
+ * Specifiers that point at project code by JS/TS rules but resolve to no project file: relative
+ * and absolute paths, path aliases, and workspace package names. Relative specifiers that the
+ * path fallback resolves, including non-module files such as stylesheets, are not unresolved.
+ */
+function unresolvedJsTsImports(
+  path: string,
+  specifiers: string[],
+  resolvedImportMap: Record<string, string>,
+  projectFiles: Set<string>,
+  aliases: PathAlias[],
+  workspaceNames: ReadonlySet<string>,
+): string[] {
+  return specifiers
+    .filter((specifier) => {
+      if (Object.hasOwn(resolvedImportMap, specifier)) return false;
+      if (specifier.startsWith('.')) {
+        return resolveInternalImport(path, specifier, projectFiles) === undefined;
+      }
+      if (specifier.startsWith('/')) return true;
+      // A catch-all alias such as "*" would classify every package as local.
+      const matchesAlias = aliases.some(
+        (alias) =>
+          aliasParts(alias).prefix !== '' && aliasReplacement(alias, specifier) !== undefined,
+      );
+      return (
+        matchesAlias ||
+        [...workspaceNames].some((name) => specifier === name || specifier.startsWith(`${name}/`))
+      );
+    })
+    .sort();
+}
+
 function parseJsTsModule(
   project: Project,
   root: string,
   path: string,
   projectFiles: Set<string>,
   aliases: PathAlias[],
+  workspaceNames: ReadonlySet<string>,
 ): ModuleRecord | undefined {
   let sourceFile: SourceFile;
   try {
@@ -577,6 +638,14 @@ function parseJsTsModule(
     calls: [...new Set(calls)].sort(),
     resolvedImports: [...resolvedImports].sort(),
     resolvedImportMap,
+    unresolvedImports: unresolvedJsTsImports(
+      path,
+      [...new Set([...imports, ...exports, ...dynamicImports])],
+      resolvedImportMap,
+      projectFiles,
+      aliases,
+      workspaceNames,
+    ),
     importLines,
     dynamicImports: [...new Set(dynamicImports)].sort(),
     declarations,
@@ -590,10 +659,30 @@ function parseModule(
   path: string,
   projectFiles: Set<string>,
   aliases: PathAlias[],
+  workspaceNames: ReadonlySet<string>,
 ): ModuleRecord | undefined {
   return sourceLanguage(path) === 'js-ts'
-    ? parseJsTsModule(project, root, path, projectFiles, aliases)
+    ? parseJsTsModule(project, root, path, projectFiles, aliases, workspaceNames)
     : undefined;
+}
+
+export type ImportResolutionStatus = 'resolved' | 'unresolved' | 'external';
+
+/**
+ * Resolution status of one import specifier of a module.
+ *
+ * `resolved` means the specifier resolves to a project file, which may be a non-module file such
+ * as a stylesheet. Relative specifiers are always either resolved or listed as unresolved, because
+ * the path fallback resolves them when the parser does not. `external` means outside the module
+ * graph by static rules; it does not mean the package is installed.
+ */
+export function importResolutionStatus(
+  module: ModuleRecord,
+  specifier: string,
+): ImportResolutionStatus {
+  if (module.resolvedImportMap?.[specifier] !== undefined) return 'resolved';
+  if (module.unresolvedImports?.includes(specifier)) return 'unresolved';
+  return specifier.startsWith('.') ? 'resolved' : 'external';
 }
 
 function runGit(root: string, args: string[]): string | undefined {
@@ -1267,6 +1356,10 @@ function discoverProjectOnce(
   const projectFiles = new Set(files.map((file) => file.path));
   const astProject = createAstProject(root);
   const aliases = pathAliases(root);
+  const workspaces = workspacePackages(root, allFiles);
+  const workspaceNames = new Set(
+    workspaces.flatMap((workspace) => (workspace.name ? [workspace.name] : [])),
+  );
   const previousModules = new Map(previousModel?.modules.map((module) => [module.path, module]));
   const currentShape = files
     .filter((file) => file.kind === 'source' || file.kind === 'test')
@@ -1293,7 +1386,7 @@ function discoverProjectOnce(
         reusedModules += 1;
         return previous;
       }
-      return parseModule(astProject, root, file.path, projectFiles, aliases);
+      return parseModule(astProject, root, file.path, projectFiles, aliases, workspaceNames);
     })
     .filter((module): module is ModuleRecord => module !== undefined);
   const sourceFiles = files.filter((file) => file.kind === 'source').map((file) => file.path);
@@ -1334,7 +1427,7 @@ function discoverProjectOnce(
       scripts,
       dependencies,
       devDependencies,
-      workspacePackages: workspacePackages(root, allFiles),
+      workspacePackages: workspaces,
     },
     files,
     modules,

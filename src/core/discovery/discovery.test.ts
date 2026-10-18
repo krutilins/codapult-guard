@@ -18,6 +18,7 @@ import {
   buildModuleTargetGraph,
   discoverProject,
   discoverProjectWithMetrics,
+  importResolutionStatus,
   type ModuleRecord,
 } from './discovery.js';
 
@@ -328,6 +329,95 @@ describe('discoverProject', () => {
     expect(module?.resolvedImports).toEqual(['src/helper.ts']);
   });
 
+  it('separates unresolved local imports from external packages', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-import-status-'));
+    roots.push(root);
+    mkdirSync(join(root, 'src'), { recursive: true });
+    mkdirSync(join(root, 'packages/shared'), { recursive: true });
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'status', private: true, workspaces: ['packages/*'] }),
+    );
+    writeFileSync(
+      join(root, 'packages/shared/package.json'),
+      JSON.stringify({ name: '@status/shared' }),
+    );
+    writeFileSync(
+      join(root, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'], '*': ['types/*'] } },
+      }),
+    );
+    writeFileSync(join(root, 'src/helper.ts'), 'export const helper = true;\n');
+    writeFileSync(join(root, 'src/styles.css'), 'body {}\n');
+    writeFileSync(
+      join(root, 'src/entry.ts'),
+      [
+        `import { helper } from './helper';`,
+        `import './styles.css';`,
+        `import { missing } from './missing';`,
+        `import { aliased } from '@/nothing';`,
+        `import { shared } from '@status/shared/utils';`,
+        `import React from 'react';`,
+        `import { readFileSync } from 'node:fs';`,
+        `export { gone } from './gone';`,
+        `export const lazy = () => import('./lazy-missing');`,
+        `export const all = [helper, missing, aliased, shared, React, readFileSync];`,
+      ].join('\n'),
+    );
+
+    const module = discoverProject(root).modules.find((item) => item.path === 'src/entry.ts');
+    if (!module) throw new Error('entry module was not discovered');
+
+    expect(module.unresolvedImports).toEqual([
+      './gone',
+      './lazy-missing',
+      './missing',
+      '@/nothing',
+      '@status/shared/utils',
+    ]);
+    expect(
+      Object.fromEntries(
+        ['./helper', './styles.css', './missing', '@/nothing', 'react', 'node:fs'].map(
+          (specifier) => [specifier, importResolutionStatus(module, specifier)],
+        ),
+      ),
+    ).toEqual({
+      './helper': 'resolved',
+      './styles.css': 'resolved',
+      './missing': 'unresolved',
+      '@/nothing': 'unresolved',
+      react: 'external',
+      'node:fs': 'external',
+    });
+  });
+
+  it('resolves directory requires to the project root and to nested directory indexes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-directory-requires-'));
+    roots.push(root);
+    mkdirSync(join(root, 'test'), { recursive: true });
+    mkdirSync(join(root, 'examples/app'), { recursive: true });
+    mkdirSync(join(root, 'lib'), { recursive: true });
+    writeFileSync(join(root, 'index.js'), `module.exports = require('./lib');\n`);
+    writeFileSync(join(root, 'lib/index.js'), 'module.exports = {};\n');
+    writeFileSync(
+      join(root, 'test/app.js'),
+      `const a = require('..');\nconst b = require('../');\n`,
+    );
+    writeFileSync(
+      join(root, 'examples/app/index.js'),
+      `const root = require('../..');\nconst lib = require('../../lib/');\n`,
+    );
+
+    const model = discoverProject(root);
+    const resolved = (path: string): string[] | undefined =>
+      model.modules.find((item) => item.path === path)?.resolvedImports;
+
+    expect(resolved('test/app.js')).toEqual(['index.js']);
+    expect(resolved('examples/app/index.js')).toEqual(['index.js', 'lib/index.js']);
+    expect(model.modules.every((item) => (item.unresolvedImports ?? []).length === 0)).toBe(true);
+  });
+
   it('applies the relative-path graph fallback only to JS/TS modules', () => {
     const record = (
       path: string,
@@ -484,7 +574,7 @@ export const key = process.env['API_KEY'];
     writeFileSync(join(root, 'package.json'), '{\n  "name": "cache",\n  "scripts": {}\n}\n');
     discoverProject(root);
     const refreshedCache = JSON.parse(readFileSync(cachePath, 'utf8')) as { version?: unknown };
-    expect(refreshedCache.version).toBe(4);
+    expect(refreshedCache.version).toBe(5);
   });
 
   it('does not persist discovery cache through a symlinked Guard directory', () => {
