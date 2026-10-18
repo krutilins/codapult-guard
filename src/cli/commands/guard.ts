@@ -147,6 +147,12 @@ function renderWaiverStatus(report: ReturnType<typeof scanGuard>): void {
   }
 }
 
+function renderNotApplicable(report: ReturnType<typeof scanGuard>): void {
+  for (const entry of report.notApplicable ?? []) {
+    dim(`Not applicable [${entry.ruleId}] to ${entry.modules} module(s): ${entry.reason}`);
+  }
+}
+
 function getRoot(): string {
   return findGuardRoot();
 }
@@ -557,7 +563,11 @@ export function guardCheckCommand(options: GuardCheckOptions = {}): void {
     ];
     console.log(
       JSON.stringify(
-        guardFindingsToSarif([...report.findings, ...contractFindings], waiverNotices),
+        guardFindingsToSarif(
+          [...report.findings, ...contractFindings],
+          waiverNotices,
+          report.notApplicable ?? [],
+        ),
         null,
         2,
       ),
@@ -590,6 +600,7 @@ export function guardCheckCommand(options: GuardCheckOptions = {}): void {
   );
   renderFindings(report.findings);
   renderWaiverStatus(report);
+  renderNotApplicable(report);
   for (const issue of contractIssues) warn(`[${issue.contractId}] ${issue.message}`);
   if (errors > 0 || contractIssues.length > 0)
     fail(`${errors + contractIssues.length} issue(s) found`);
@@ -654,6 +665,7 @@ export function guardAuditCommand(options: GuardOutputOptions = {}): void {
   dim(`Scanned ${report.scannedFiles} source file(s); baseline is ignored for this full audit.`);
   renderFindings(report.findings);
   renderWaiverStatus(report);
+  renderNotApplicable(report);
   for (const issue of contractIssues) warn(`[${issue.contractId}] ${issue.message}`);
   if (errors > 0) fail(`${errors} error(s) found`);
   else if (warnings > 0 || contractIssues.length > 0) {

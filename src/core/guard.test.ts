@@ -633,13 +633,15 @@ describe('scanGuard', () => {
     expect(buildConventionsMemory(model).sourceExtensions).toEqual(['.py']);
   });
 
-  it('does not report required-call contracts on Python modules, which carry no calls', () => {
+  it('reports required-call contracts as not applicable to Python modules', () => {
     const root = createProject({
       'pyproject.toml': '',
       'app/handler.py': 'import logging\n',
+      'app/worker.py': 'import logging\n',
       'app/handler.ts': 'export const handler = () => 1;\n',
+      'app/audited.ts': 'audit();\n',
     });
-    const findings = scanGuard(root, {
+    const report = scanGuard(root, {
       version: 1,
       rules: [],
       contracts: [
@@ -651,9 +653,122 @@ describe('scanGuard', () => {
           mustCall: ['audit'],
         },
       ],
-    }).findings;
+    });
 
-    expect(findings.map((finding) => finding.file)).toEqual(['app/handler.ts']);
+    expect(report.findings.map((finding) => finding.file)).toEqual(['app/handler.ts']);
+    expect(report.notApplicable).toEqual([
+      {
+        ruleId: 'contract:audit',
+        reason: 'Discovery does not collect calls for these modules.',
+        modules: 2,
+      },
+    ]);
+  });
+
+  it('reports package-boundary contracts as not applicable to Python modules', () => {
+    const root = createProject({
+      'package.json': JSON.stringify({ private: true, workspaces: ['packages/*'] }),
+      'packages/app/package.json': JSON.stringify({ name: '@example/app' }),
+      'packages/data/package.json': JSON.stringify({ name: '@example/data' }),
+      'packages/app/src/page.ts': `import { db } from '@example/data'; export const page = db;`,
+      'packages/app/scripts/export.py': 'import data\n',
+      'packages/data/src/db.ts': `export const db = {};`,
+    });
+    const report = scanGuard(root, {
+      version: 1,
+      rules: [],
+      contracts: [
+        {
+          id: 'app-no-data',
+          statement: 'The app package must use the service boundary.',
+          kind: 'package-boundary',
+          fromPackages: ['@example/app'],
+          mustNotImportPackages: ['@example/data'],
+          status: 'active',
+        },
+      ],
+    });
+
+    expect(report.findings.map((finding) => finding.file)).toEqual(['packages/app/src/page.ts']);
+    expect(report.notApplicable).toEqual([
+      {
+        ruleId: 'contract:app-no-data',
+        reason:
+          'Package membership comes from package.json workspaces, which do not cover these modules.',
+        modules: 1,
+      },
+    ]);
+  });
+
+  it('reports client rules as not applicable to Python modules and applies import rules', () => {
+    const root = createProject({
+      'pyproject.toml': '',
+      'app/client.tsx': `'use client';\nimport { db } from './db';\n`,
+      'app/db.ts': 'export const db = {};\n',
+      'app/views.py': 'import db\n',
+    });
+    const report = scanGuard(root, {
+      version: 1,
+      rules: [
+        {
+          id: 'client-no-db',
+          description: 'Client code must not import the database.',
+          severity: 'error',
+          kind: 'client-forbidden-import',
+          patterns: ['./db', 'db'],
+        },
+        {
+          id: 'no-db',
+          description: 'Nothing imports db directly.',
+          severity: 'warning',
+          kind: 'forbidden-import',
+          patterns: ['db'],
+        },
+      ],
+    });
+
+    expect(report.findings.map((finding) => [finding.ruleId, finding.file])).toEqual([
+      ['client-no-db', 'app/client.tsx'],
+      ['no-db', 'app/views.py'],
+    ]);
+    expect(report.notApplicable).toEqual([
+      {
+        ruleId: 'client-no-db',
+        reason: 'Discovery does not collect directives such as "use client" for these modules.',
+        modules: 1,
+      },
+    ]);
+  });
+
+  it('reports nothing as not applicable in a JS/TS-only project', () => {
+    const root = createProject({
+      'package.json': JSON.stringify({ name: 'web' }),
+      'app/handler.ts': 'export const handler = () => 1;\n',
+    });
+    const report = scanGuard(root, {
+      version: 1,
+      rules: [
+        {
+          id: 'client-no-db',
+          description: 'Client code must not import the database.',
+          severity: 'error',
+          kind: 'client-forbidden-import',
+          patterns: ['db'],
+        },
+      ],
+      contracts: [
+        {
+          id: 'audit',
+          statement: 'Handlers must call audit.',
+          kind: 'required-call',
+          scope: ['app'],
+          mustCall: ['audit'],
+        },
+      ],
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.notApplicable).toEqual([]);
   });
 
   it('creates waiver state during initialization and refuses an invalid renewal', () => {

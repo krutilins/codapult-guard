@@ -1,4 +1,4 @@
-import type { GuardFinding } from '../guard.js';
+import type { GuardFinding, GuardNotApplicable } from '../guard.js';
 
 export interface GuardSarifNotice {
   ruleId: string;
@@ -15,15 +15,33 @@ interface SarifResult {
   ];
 }
 
+interface SarifNotification {
+  level: 'note';
+  message: { text: string };
+  associatedRule: { id: string };
+}
+
+interface SarifInvocation {
+  executionSuccessful: true;
+  toolExecutionNotifications: SarifNotification[];
+}
+
 export interface SarifLog {
   version: '2.1.0';
   $schema: string;
-  runs: [{ tool: { driver: { name: string; informationUri: string } }; results: SarifResult[] }];
+  runs: [
+    {
+      tool: { driver: { name: string; informationUri: string } };
+      invocations?: [SarifInvocation];
+      results: SarifResult[];
+    },
+  ];
 }
 
 export function guardFindingsToSarif(
   findings: GuardFinding[],
   notices: GuardSarifNotice[] = [],
+  notApplicable: GuardNotApplicable[] = [],
 ): SarifLog {
   const findingResults: SarifResult[] = findings.map((finding): SarifResult => ({
     ruleId: finding.ruleId,
@@ -57,6 +75,23 @@ export function guardFindingsToSarif(
             informationUri: 'https://codapult.dev/docs/developer-tools/guard',
           },
         },
+        // Skipped checks are tool notifications, not results, so they never fail a scan.
+        ...(notApplicable.length > 0
+          ? {
+              invocations: [
+                {
+                  executionSuccessful: true,
+                  toolExecutionNotifications: notApplicable.map((entry): SarifNotification => ({
+                    level: 'note',
+                    message: {
+                      text: `Not applicable to ${entry.modules} module(s): ${entry.reason}`,
+                    },
+                    associatedRule: { id: entry.ruleId },
+                  })),
+                },
+              ] as [SarifInvocation],
+            }
+          : {}),
         results,
       },
     ],

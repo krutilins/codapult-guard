@@ -441,6 +441,24 @@ function sourceLanguage(path: string): SourceLanguage | undefined {
   return undefined;
 }
 
+/** A kind of module fact that policy checks read (D17). */
+export type ModuleFact = 'imports' | 'calls' | 'directives' | 'packages';
+
+/**
+ * Facts discovery collects per language. `packages` means membership in a `package.json`
+ * workspace package, which Python modules do not have in the MVP (C2).
+ */
+const COLLECTED_FACTS: Record<SourceLanguage, readonly ModuleFact[]> = {
+  'js-ts': ['imports', 'calls', 'directives', 'packages'],
+  python: ['imports'],
+};
+
+/** Facts discovery collects for a module at this path; empty for files that are not modules. */
+export function collectedFacts(path: string): readonly ModuleFact[] {
+  const language = sourceLanguage(path);
+  return language ? COLLECTED_FACTS[language] : [];
+}
+
 /** Python test files (D11): `test_*.py`, `*_test.py`, `conftest.py`, or a `tests`/`test` segment. */
 function pythonTestFile(path: string): boolean {
   const segments = path.toLowerCase().split('/');

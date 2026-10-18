@@ -765,6 +765,20 @@ SARIF output for GitHub Code Scanning or another SARIF consumer:
 pnpm exec codapult-guard check --changed --sarif > guard-results.sarif
 ```
 
+### Checks that do not apply
+
+Some checks need facts that discovery does not collect for every module. A `required-call`
+contract needs calls, a `package-boundary` contract needs `package.json` workspace membership, and a
+`client-forbidden-import` rule needs `"use client"` directives. When a module in scope lacks the
+fact, the check skips that module and the report lists it under `notApplicable`, with the rule ID,
+the reason, and the number of skipped modules. `check` and `audit` print these entries as a short
+summary, JSON output and the MCP check and context tools return them in the report, and SARIF
+output writes them as `invocations[0].toolExecutionNotifications` with level `note`.
+
+Not-applicable entries are informational. They never change the exit code or the outcome, so a
+skipped check is visible without failing the run. A project whose modules all have the needed facts
+gets an empty list and unchanged output.
+
 The repository includes a copyable consumer workflow at [`docs/guard-ci.yml`](guard-ci.yml). On pull
 requests it installs dependencies without lifecycle scripts and runs the deterministic Guard gate
 without executing PR-owned project scripts; trusted pushes can run configured project checks. It uploads SARIF

@@ -367,6 +367,8 @@ export function registerGuardTools(server: McpServer): void {
         status: 'ready-for-verification',
         action: 'verify',
         reason: 'No changed-file architecture regressions remain.',
+        // Skipped checks are informational; they never block verification.
+        ...((report.notApplicable ?? []).length > 0 ? { notApplicable: report.notApplicable } : {}),
         canRetry: true,
       });
     },

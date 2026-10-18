@@ -13,7 +13,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, extname, resolve, sep } from 'node:path';
-import { buildModuleTargetGraph, type ProjectModel } from './discovery/discovery.js';
+import {
+  buildModuleTargetGraph,
+  collectedFacts,
+  type ModuleFact,
+  type ProjectModel,
+} from './discovery/discovery.js';
 import {
   clearDiscoveryCache,
   discoverProject,
@@ -367,6 +372,13 @@ export interface GuardContractIssue {
   message: string;
 }
 
+/** A rule or contract that skipped modules lacking a fact it needs (D17). */
+export interface GuardNotApplicable {
+  ruleId: string;
+  reason: string;
+  modules: number;
+}
+
 export interface GuardReport {
   configured: boolean;
   findings: GuardFinding[];
@@ -375,6 +387,8 @@ export interface GuardReport {
   waived: number;
   waiverWarnings: GuardWaiver[];
   expiredWaivers: GuardWaiver[];
+  /** Checks that skipped modules. Informational: never affects the outcome or the exit code. */
+  notApplicable: GuardNotApplicable[];
 }
 
 interface ScanGuardOptions {
@@ -2076,13 +2090,70 @@ function packageForImport(
   )?.name;
 }
 
-function scanFile(module: ProjectModel['modules'][number], rules: GuardRule[]): GuardFinding[] {
+const REQUIRED_FACTS: Record<GuardRuleKind | Exclude<GuardContractKind, 'guidance'>, ModuleFact> = {
+  'forbidden-import': 'imports',
+  'client-forbidden-import': 'directives',
+  'import-boundary': 'imports',
+  'required-call': 'calls',
+  'package-boundary': 'packages',
+};
+
+const MISSING_FACT_REASONS: Record<ModuleFact, string> = {
+  imports: 'Discovery does not collect imports for these modules.',
+  calls: 'Discovery does not collect calls for these modules.',
+  directives: 'Discovery does not collect directives such as "use client" for these modules.',
+  packages:
+    'Package membership comes from package.json workspaces, which do not cover these modules.',
+};
+
+/** The fact a check needs that discovery does not collect for this module, if any. */
+function missingFact(
+  kind: GuardRuleKind | Exclude<GuardContractKind, 'guidance'>,
+  path: string,
+): ModuleFact | undefined {
+  const fact = REQUIRED_FACTS[kind];
+  return collectedFacts(path).includes(fact) ? undefined : fact;
+}
+
+type NotApplicableRecorder = (ruleId: string, fact: ModuleFact) => void;
+
+function notApplicableCollector(): {
+  record: NotApplicableRecorder;
+  entries: () => GuardNotApplicable[];
+} {
+  const counts = new Map<string, GuardNotApplicable>();
+  return {
+    record: (ruleId, fact) => {
+      const reason = MISSING_FACT_REASONS[fact];
+      const key = `${ruleId}\0${reason}`;
+      const entry = counts.get(key) ?? { ruleId, reason, modules: 0 };
+      entry.modules += 1;
+      counts.set(key, entry);
+    },
+    entries: () =>
+      [...counts.values()].sort((left, right) => {
+        const byRule = left.ruleId.localeCompare(right.ruleId);
+        return byRule !== 0 ? byRule : left.reason.localeCompare(right.reason);
+      }),
+  };
+}
+
+function scanFile(
+  module: ProjectModel['modules'][number],
+  rules: GuardRule[],
+  recordNotApplicable?: NotApplicableRecorder,
+): GuardFinding[] {
   const file = module.path;
   const isClient = module.directives.includes('use client');
+  const applicableRules = rules.filter((rule) => {
+    if (rule.status === 'proposed' || !ruleAppliesToFile(rule, file)) return false;
+    const fact = missingFact(rule.kind, file);
+    if (fact) recordNotApplicable?.(rule.id, fact);
+    return fact === undefined;
+  });
   const findings: GuardFinding[] = [];
   for (const reference of moduleImportReferences(module)) {
-    for (const rule of rules) {
-      if (rule.status === 'proposed' || !ruleAppliesToFile(rule, file)) continue;
+    for (const rule of applicableRules) {
       if (rule.kind === 'client-forbidden-import' && !isClient) continue;
       if (
         !rule.patterns.some(
@@ -2111,6 +2182,7 @@ function scanContracts(
   root: string,
   contracts: GuardContract[],
   changed?: Set<string>,
+  recordNotApplicable?: NotApplicableRecorder,
 ): GuardFinding[] {
   const model = discoverProject(root);
   const findings: GuardFinding[] = [];
@@ -2120,6 +2192,11 @@ function scanContracts(
     for (const module of model.modules.filter(
       (item) => (!changed || changed.has(item.path)) && contractAppliesToFile(contract, item.path),
     )) {
+      const fact = missingFact(contract.kind, module.path);
+      if (fact) {
+        recordNotApplicable?.(`contract:${contract.id}`, fact);
+        continue;
+      }
       if (contract.kind === 'import-boundary') {
         for (const reference of moduleImportReferences(module)) {
           if (
@@ -2165,8 +2242,6 @@ function scanContracts(
       }
       if (
         contract.kind === 'required-call' &&
-        // Python records carry no calls (C1). Task 06.1 reports these modules as not applicable.
-        module.pythonImports === undefined &&
         contract.mustCall !== undefined &&
         contract.mustCall.length > 0 &&
         !module.calls.some((call) =>
@@ -2596,9 +2671,10 @@ export function scanGuard(
   const modules = model.modules.filter(
     (module) => sourcePaths.has(module.path) && (!scope || scope.has(module.path)),
   );
+  const notApplicable = notApplicableCollector();
   const allFindings = [
-    ...modules.flatMap((module) => scanFile(module, guardConfig.rules)),
-    ...scanContracts(root, guardConfig.contracts ?? [], scope),
+    ...modules.flatMap((module) => scanFile(module, guardConfig.rules, notApplicable.record)),
+    ...scanContracts(root, guardConfig.contracts ?? [], scope, notApplicable.record),
     ...scanBudgets(root, model, guardConfig.budgets ?? [], scope),
     ...(options.includeArchitectureInsights ? architectureInsightFindings(root, scope) : []),
   ];
@@ -2643,6 +2719,7 @@ export function scanGuard(
     waived: baselineFindings.length - findings.length,
     waiverWarnings,
     expiredWaivers,
+    notApplicable: notApplicable.entries(),
   };
 }
 

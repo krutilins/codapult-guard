@@ -82,4 +82,35 @@ describe('guardFindingsToSarif', () => {
       },
     ]);
   });
+
+  it('writes skipped checks as tool execution notifications, not results', () => {
+    const sarif = guardFindingsToSarif(
+      [],
+      [],
+      [
+        {
+          ruleId: 'contract:audit',
+          reason: 'Discovery does not collect calls for these modules.',
+          modules: 2,
+        },
+      ],
+    );
+
+    expect(sarif.runs[0].results).toEqual([]);
+    expect(sarif.runs[0].invocations).toEqual([
+      {
+        executionSuccessful: true,
+        toolExecutionNotifications: [
+          {
+            level: 'note',
+            message: {
+              text: 'Not applicable to 2 module(s): Discovery does not collect calls for these modules.',
+            },
+            associatedRule: { id: 'contract:audit' },
+          },
+        ],
+      },
+    ]);
+    expect(guardFindingsToSarif([]).runs[0]).not.toHaveProperty('invocations');
+  });
 });

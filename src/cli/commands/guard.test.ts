@@ -87,6 +87,41 @@ describe('guard commands', () => {
     process.exitCode = undefined;
   });
 
+  it('shows skipped checks without changing the exit code', async () => {
+    const { guardCheckCommand } = await import('./guard.js');
+    const { scanGuard } = await import('../../core/guard.js');
+    const notApplicable = [
+      {
+        ruleId: 'contract:audit',
+        reason: 'Discovery does not collect calls for these modules.',
+        modules: 2,
+      },
+    ];
+    const report = { scannedFiles: 3, suppressed: 0, findings: [], notApplicable };
+    vi.mocked(scanGuard)
+      .mockReturnValueOnce(report as never)
+      .mockReturnValueOnce(report as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    guardCheckCommand();
+    const text = log.mock.calls.flat().join('\n');
+    expect(process.exitCode).toBe(0);
+    log.mockClear();
+    guardCheckCommand({ sarif: true });
+    const sarif = JSON.parse(String(log.mock.calls[0]?.[0])) as {
+      runs: [{ results: unknown[]; invocations: unknown[] }];
+    };
+    log.mockRestore();
+
+    expect(text).toContain(
+      'Not applicable [contract:audit] to 2 module(s): Discovery does not collect calls',
+    );
+    expect(process.exitCode).toBe(0);
+    expect(sarif.runs[0].results).toEqual([]);
+    expect(sarif.runs[0].invocations).toHaveLength(1);
+    process.exitCode = undefined;
+  });
+
   it('analyzes the project and refreshes the discovery snapshot', async () => {
     const { guardAnalyzeCommand } = await import('./guard.js');
     expect(() => guardAnalyzeCommand()).not.toThrow();
