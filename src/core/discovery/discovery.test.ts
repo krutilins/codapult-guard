@@ -13,7 +13,13 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DiscoveryLimitError, discoverProject, discoverProjectWithMetrics } from './discovery.js';
+import {
+  DiscoveryLimitError,
+  buildModuleTargetGraph,
+  discoverProject,
+  discoverProjectWithMetrics,
+  type ModuleRecord,
+} from './discovery.js';
 
 const roots: string[] = [];
 
@@ -296,6 +302,61 @@ describe('discoverProject', () => {
       './lazy': 8,
       './legacy': 9,
     });
+  });
+
+  it('never resolves a JS/TS import to a Python file', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-cross-language-'));
+    roots.push(root);
+    mkdirSync(join(root, 'src'), { recursive: true });
+    writeFileSync(
+      join(root, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'] } } }),
+    );
+    writeFileSync(join(root, 'src/tool.py'), 'import os\n');
+    writeFileSync(join(root, 'src/helper.ts'), 'export const helper = true;\n');
+    writeFileSync(
+      join(root, 'src/entry.ts'),
+      [
+        `export const relative = () => import('./tool.py');`,
+        `export const aliased = () => import('@/tool.py');`,
+        `export const helper = () => import('./helper');`,
+      ].join('\n'),
+    );
+
+    const module = discoverProject(root).modules.find((item) => item.path === 'src/entry.ts');
+
+    expect(module?.resolvedImports).toEqual(['src/helper.ts']);
+  });
+
+  it('applies the relative-path graph fallback only to JS/TS modules', () => {
+    const record = (
+      path: string,
+      imports: string[],
+      resolvedImports: string[] = [],
+    ): ModuleRecord => ({
+      path,
+      contentHash: '',
+      imports,
+      importedSymbols: [],
+      exports: [],
+      calls: [],
+      resolvedImports,
+      dynamicImports: [],
+      declarations: { classes: 0, functions: 0, interfaces: 0, types: 0, variables: 0 },
+      directives: [],
+    });
+
+    const graph = buildModuleTargetGraph([
+      record('pkg/views.py', ['.', '..models', '.helpers'], ['pkg/models.py']),
+      record('pkg/models.py', []),
+      record('pkg/index.ts', ['./views.py', './util']),
+      record('pkg/util.ts', []),
+      record('models.ts', []),
+      record('pkg/.helpers.ts', []),
+    ]);
+
+    expect(graph.get('pkg/views.py')).toEqual(['pkg/models.py']);
+    expect(graph.get('pkg/index.ts')).toEqual(['pkg/util.ts']);
   });
 
   it('keeps AST-resolved and fallback edges when a module mixes aliases and relative imports', () => {

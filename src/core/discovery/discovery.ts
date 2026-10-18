@@ -170,7 +170,17 @@ const IGNORED_DIRECTORIES = new Set([
   'certificates',
 ]);
 
-const SOURCE_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts']);
+const JS_TS_SOURCE_EXTENSIONS = new Set([
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+]);
+const PYTHON_SOURCE_EXTENSIONS = new Set(['.py']);
 const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const DOCUMENTATION_EXTENSIONS = new Set(['.md', '.mdx', '.rst', '.txt']);
 const CONFIG_NAMES = new Set([
@@ -364,8 +374,28 @@ function fileKind(path: string): ProjectFileRecord['kind'] {
   if (path.includes('/migrations/') || path.includes('/drizzle/')) return 'migration';
   if (DOCUMENTATION_EXTENSIONS.has(extname(name))) return 'documentation';
   if (CONFIG_NAMES.has(name) || name.includes('config')) return 'config';
-  if (SOURCE_EXTENSIONS.has(extname(name))) return 'source';
+  if (JS_TS_SOURCE_EXTENSIONS.has(extname(name))) return 'source';
   return 'other';
+}
+
+type SourceLanguage = 'js-ts' | 'python';
+
+/** Language of a source file by extension. Import resolution never crosses languages. */
+function sourceLanguage(path: string): SourceLanguage | undefined {
+  const extension = extname(path);
+  if (JS_TS_SOURCE_EXTENSIONS.has(extension)) return 'js-ts';
+  if (PYTHON_SOURCE_EXTENSIONS.has(extension)) return 'python';
+  return undefined;
+}
+
+/** JS/TS resolution candidates for a path base. Another language's source file is never one. */
+function jsTsResolutionCandidates(base: string): string[] {
+  const baseLanguage = sourceLanguage(base);
+  return [
+    ...(baseLanguage === undefined || baseLanguage === 'js-ts' ? [base] : []),
+    ...[...JS_TS_SOURCE_EXTENSIONS].map((extension) => `${base}${extension}`),
+    ...[...JS_TS_SOURCE_EXTENSIONS].map((extension) => `${base}/index${extension}`),
+  ];
 }
 
 function sourceFilePath(
@@ -384,12 +414,7 @@ function resolveInternalImport(
 ): string | undefined {
   if (!importPath.startsWith('.')) return undefined;
   const base = normalize(join(dirname(from), importPath));
-  const candidates = [
-    base,
-    ...[...SOURCE_EXTENSIONS].map((extension) => `${base}${extension}`),
-    ...[...SOURCE_EXTENSIONS].map((extension) => `${base}/index${extension}`),
-  ];
-  return candidates.find((candidate) => modules.has(candidate));
+  return jsTsResolutionCandidates(base).find((candidate) => modules.has(candidate));
 }
 
 interface PathAlias {
@@ -437,26 +462,22 @@ function resolveAliasedImport(
       const absoluteBase = resolve(alias.baseDirectory, targetPath);
       const relativeBase = relative(root, absoluteBase);
       const normalizedBase = relativeBase.replace(/^\.\//, '').replaceAll('\\', '/');
-      const candidates = [
-        normalizedBase,
-        ...[...SOURCE_EXTENSIONS].map((extension) => `${normalizedBase}${extension}`),
-        ...[...SOURCE_EXTENSIONS].map((extension) => `${normalizedBase}/index${extension}`),
-      ];
-      const projectCandidate = candidates.find((candidate) => modules.has(candidate));
+      const projectCandidate = jsTsResolutionCandidates(normalizedBase).find((candidate) =>
+        modules.has(candidate),
+      );
       if (projectCandidate) return projectCandidate;
     }
   }
   return undefined;
 }
 
-function parseModule(
+function parseJsTsModule(
   project: Project,
   root: string,
   path: string,
   projectFiles: Set<string>,
   aliases: PathAlias[],
 ): ModuleRecord | undefined {
-  if (!SOURCE_EXTENSIONS.has(extname(path))) return undefined;
   let sourceFile: SourceFile;
   try {
     sourceFile =
@@ -561,6 +582,18 @@ function parseModule(
     declarations,
     directives,
   };
+}
+
+function parseModule(
+  project: Project,
+  root: string,
+  path: string,
+  projectFiles: Set<string>,
+  aliases: PathAlias[],
+): ModuleRecord | undefined {
+  return sourceLanguage(path) === 'js-ts'
+    ? parseJsTsModule(project, root, path, projectFiles, aliases)
+    : undefined;
 }
 
 function runGit(root: string, args: string[]): string | undefined {
@@ -671,16 +704,19 @@ function layerForPath(path: string): string {
  *
  * TypeScript resolution is authoritative when available, but it is not complete for every
  * JavaScript/configuration shape. The fallback must be additive: using it only when there are
- * no resolved imports silently drops unresolved edges from mixed projects.
+ * no resolved imports silently drops unresolved edges from mixed projects. The fallback applies
+ * JS/TS relative-path rules, so other languages rely on their own resolved imports only.
  */
 export function buildModuleTargetGraph(modules: ModuleRecord[]): Map<string, string[]> {
   const moduleSet = new Set(modules.map((candidate) => candidate.path));
   return new Map(
     modules.map((module) => {
       const targets = new Set(module.resolvedImports.filter((path) => moduleSet.has(path)));
-      for (const importPath of [...module.imports, ...module.dynamicImports]) {
-        const target = resolveInternalImport(module.path, importPath, moduleSet);
-        if (target) targets.add(target);
+      if (sourceLanguage(module.path) === 'js-ts') {
+        for (const importPath of [...module.imports, ...module.dynamicImports]) {
+          const target = resolveInternalImport(module.path, importPath, moduleSet);
+          if (target) targets.add(target);
+        }
       }
       return [module.path, [...targets].sort()] as const;
     }),
