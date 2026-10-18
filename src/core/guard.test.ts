@@ -284,6 +284,70 @@ describe('scanGuard', () => {
     );
   });
 
+  it('reports the line of re-exports, dynamic imports, and require calls', () => {
+    const root = createProject({
+      'entry.ts': [
+        `// header`,
+        `export { value } from './reexported';`,
+        `export const load = () => import('./lazy');`,
+        `const legacy = require('./legacy');`,
+        `export const all = [legacy];`,
+      ].join('\n'),
+    });
+
+    const report = scanGuard(root, {
+      version: 1,
+      rules: [
+        {
+          id: 'forbidden',
+          description: 'This import is forbidden.',
+          severity: 'error',
+          kind: 'forbidden-import',
+          patterns: ['./reexported', './lazy', './legacy'],
+        },
+      ],
+    });
+
+    expect(
+      report.findings
+        .map(({ importPath, line }) => ({ importPath, line }))
+        .sort((a, b) => a.line - b.line),
+    ).toEqual([
+      { importPath: './reexported', line: 2 },
+      { importPath: './lazy', line: 3 },
+      { importPath: './legacy', line: 4 },
+    ]);
+  });
+
+  it('scans every source module extension and skips test modules', () => {
+    const root = createProject({
+      'src/esm.mjs': `import './secret';\n`,
+      'src/common.cts': `import './secret';\n`,
+      'src/secret.ts': `export const secret = true;\n`,
+      'src/__tests__/esm.ts': `import '../secret';\n`,
+      'src/esm.test.ts': `import './secret';\n`,
+    });
+
+    const report = scanGuard(root, {
+      version: 1,
+      rules: [
+        {
+          id: 'no-secret',
+          description: 'This import is forbidden.',
+          severity: 'error',
+          kind: 'forbidden-import',
+          patterns: ['./secret', '../secret'],
+        },
+      ],
+    });
+
+    expect(report.scannedFiles).toBe(3);
+    expect(report.findings.map((finding) => finding.file).sort()).toEqual([
+      'src/common.cts',
+      'src/esm.mjs',
+    ]);
+  });
+
   it('checks unchanged transitive dependents when a dependency changes', () => {
     const root = createProject({
       'route.ts': `import { run } from './service'; export const route = () => run();\n`,
@@ -857,6 +921,49 @@ describe('guard contracts', () => {
         file: 'packages/app/src/page.ts',
         importPath: '@example/data',
       }),
+    );
+  });
+
+  it('reports the import line for import-boundary and package-boundary contracts', () => {
+    const root = createProject({
+      'package.json': JSON.stringify({ private: true, workspaces: ['packages/*'] }),
+      'packages/app/package.json': JSON.stringify({ name: '@example/app' }),
+      'packages/data/package.json': JSON.stringify({ name: '@example/data' }),
+      'packages/app/src/page.ts': [
+        `// page`,
+        `import { helper } from './helper';`,
+        `import { db } from '@example/data';`,
+        `export const page = [helper, db];`,
+      ].join('\n'),
+      'packages/app/src/helper.ts': `export const helper = true;\n`,
+      'packages/data/src/db.ts': `export const db = {};\n`,
+    });
+    const report = scanGuard(root, {
+      version: 1,
+      rules: [],
+      contracts: [
+        {
+          id: 'app-no-helper',
+          statement: 'Pages must not import helpers directly.',
+          kind: 'import-boundary',
+          scope: ['packages/app/src/page.ts'],
+          mustNotImport: ['./helper'],
+        },
+        {
+          id: 'app-no-data',
+          statement: 'The app package must use the service boundary.',
+          kind: 'package-boundary',
+          fromPackages: ['@example/app'],
+          mustNotImportPackages: ['@example/data'],
+        },
+      ],
+    });
+
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ ruleId: 'contract:app-no-helper', line: 2 }),
+    );
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ ruleId: 'contract:app-no-data', line: 3 }),
     );
   });
 

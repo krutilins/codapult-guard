@@ -267,6 +267,37 @@ describe('discoverProject', () => {
     expect(model.insights.dependencyEdges).toContainEqual({ from: 'src/b.ts', to: 'src/a.ts' });
   });
 
+  it('records the first line of each import, preferring static imports over re-exports', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-import-lines-'));
+    roots.push(root);
+    writeFileSync(
+      join(root, 'entry.ts'),
+      [
+        `export { shared } from './shared';`,
+        `// comment`,
+        `import { shared as local } from './shared';`,
+        `import {`,
+        `  value,`,
+        `} from './multiline';`,
+        `export * from './barrel';`,
+        `export const load = () => import('./lazy');`,
+        `const legacy = require('./legacy');`,
+        `import './multiline';`,
+        `export const all = [local, value, legacy];`,
+      ].join('\n'),
+    );
+
+    const module = discoverProject(root).modules.find((item) => item.path === 'entry.ts');
+
+    expect(module?.importLines).toEqual({
+      './shared': 3,
+      './multiline': 4,
+      './barrel': 7,
+      './lazy': 8,
+      './legacy': 9,
+    });
+  });
+
   it('keeps AST-resolved and fallback edges when a module mixes aliases and relative imports', () => {
     const root = mkdtempSync(join(tmpdir(), 'guard-mixed-graph-'));
     roots.push(root);
@@ -392,7 +423,7 @@ export const key = process.env['API_KEY'];
     writeFileSync(join(root, 'package.json'), '{\n  "name": "cache",\n  "scripts": {}\n}\n');
     discoverProject(root);
     const refreshedCache = JSON.parse(readFileSync(cachePath, 'utf8')) as { version?: unknown };
-    expect(refreshedCache.version).toBe(3);
+    expect(refreshedCache.version).toBe(4);
   });
 
   it('does not persist discovery cache through a symlinked Guard directory', () => {

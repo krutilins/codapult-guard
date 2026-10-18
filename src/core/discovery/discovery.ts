@@ -30,6 +30,8 @@ export interface ModuleRecord {
   calls: string[];
   resolvedImports: string[];
   resolvedImportMap?: Record<string, string> | undefined;
+  /** 1-based line of the first import, re-export, or dynamic import of each module specifier. */
+  importLines?: Record<string, number> | undefined;
   dynamicImports: string[];
   declarations: {
     classes: number;
@@ -193,7 +195,7 @@ const discoveryReuse = new Map<string, number>();
 const discoveryCacheHits = new Map<string, boolean>();
 // Bump when the persisted model shape changes; old cache entries must never
 // bypass discovery and return an incomplete ProjectModel.
-const DISCOVERY_CACHE_VERSION = 3;
+const DISCOVERY_CACHE_VERSION = 4;
 
 function discoveryCachePath(root: string): string {
   return resolve(root, `.${config.appName}/guard/cache.json`);
@@ -470,9 +472,15 @@ function parseModule(
   const declarations = { classes: 0, functions: 0, interfaces: 0, types: 0, variables: 0 };
   const resolvedImports = new Set<string>();
   const resolvedImportMap: Record<string, string> = {};
+  // Static imports take precedence over re-exports, which take precedence over dynamic imports.
+  const importLines: Record<string, number> = {};
+  const recordLine = (specifier: string, line: number): void => {
+    if (!Object.hasOwn(importLines, specifier)) importLines[specifier] = line;
+  };
   for (const declaration of sourceFile.getImportDeclarations()) {
     const importPath = declaration.getModuleSpecifierValue();
     imports.push(importPath);
+    recordLine(importPath, declaration.getStartLineNumber());
     const defaultImport = declaration.getDefaultImport()?.getText();
     if (defaultImport) importedSymbols.push(defaultImport);
     const namespaceImport = declaration.getNamespaceImport()?.getText();
@@ -493,6 +501,7 @@ function parseModule(
     const moduleSpecifier = declaration.getModuleSpecifierValue();
     if (!moduleSpecifier) continue;
     exports.push(moduleSpecifier);
+    recordLine(moduleSpecifier, declaration.getStartLineNumber());
     const resolved = declaration.getModuleSpecifierSourceFile();
     const resolvedPath =
       (resolved && sourceFilePath(root, resolved, projectFiles)) ??
@@ -519,6 +528,7 @@ function parseModule(
     const importPath = argument.getText().slice(1, -1);
     if (!importPath) continue;
     dynamicImports.push(importPath);
+    recordLine(importPath, call.getStartLineNumber());
     const resolvedPath =
       resolveInternalImport(path, importPath, projectFiles) ??
       resolveAliasedImport(root, importPath, aliases, projectFiles);
@@ -546,6 +556,7 @@ function parseModule(
     calls: [...new Set(calls)].sort(),
     resolvedImports: [...resolvedImports].sort(),
     resolvedImportMap,
+    importLines,
     dynamicImports: [...new Set(dynamicImports)].sort(),
     declarations,
     directives,

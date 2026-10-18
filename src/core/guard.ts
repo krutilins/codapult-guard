@@ -5,7 +5,6 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -13,8 +12,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, extname, relative, resolve, sep } from 'node:path';
-import { Project, SyntaxKind, type SourceFile } from 'ts-morph';
+import { dirname, extname, resolve, sep } from 'node:path';
 import { buildModuleTargetGraph, type ProjectModel } from './discovery/discovery.js';
 import {
   clearDiscoveryCache,
@@ -2004,22 +2002,6 @@ export function validateGuardPolicy(root: string, guardConfig: GuardConfig): Gua
   ];
 }
 
-function isSourceFile(file: string): boolean {
-  return /\.(?:ts|tsx|js|jsx)$/.test(file) && !/\.(?:test|spec)\.(?:ts|tsx|js|jsx)$/.test(file);
-}
-
-function listSourceFiles(root: string, directory = root): string[] {
-  const ignored = new Set(['.git', '.next', 'dist', 'node_modules', GUARD_DIR.split('/')[0]]);
-  const files: string[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (ignored.has(entry.name)) continue;
-    const fullPath = resolve(directory, entry.name);
-    if (entry.isDirectory()) files.push(...listSourceFiles(root, fullPath));
-    else if (entry.isFile() && isSourceFile(entry.name)) files.push(relative(root, fullPath));
-  }
-  return files.sort();
-}
-
 function patternMatches(importPath: string, pattern: string): boolean {
   return pattern.endsWith('*')
     ? importPath.startsWith(pattern.slice(0, -1))
@@ -2045,31 +2027,20 @@ function contractAppliesToFile(contract: GuardContract, file: string): boolean {
   return includedByScope && includedByEntrypoint && !excluded;
 }
 
-function importLine(sourceFile: SourceFile, importPath: string): number {
-  const declaration = sourceFile
-    .getImportDeclarations()
-    .find((item) => item.getModuleSpecifierValue() === importPath);
-  if (declaration) return declaration.getStartLineNumber();
-  const exportDeclaration = sourceFile
-    .getExportDeclarations()
-    .find((item) => item.getModuleSpecifierValue() === importPath);
-  if (exportDeclaration) return exportDeclaration.getStartLineNumber();
-  const dynamicImport = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).find((item) => {
-    if (item.getExpression().getText() !== 'import') return false;
-    const argument = item.getArguments()[0];
-    return argument.isKind(SyntaxKind.StringLiteral) && argument.getLiteralValue() === importPath;
-  });
-  return dynamicImport?.getStartLineNumber() ?? 1;
-}
-
 interface ModuleImportReference {
   source: string;
   resolved?: string | undefined;
+  line: number;
 }
 
 function moduleImportReferences(module: ProjectModel['modules'][number]): ModuleImportReference[] {
   const sources = [...new Set([...module.imports, ...module.exports, ...module.dynamicImports])];
-  return sources.map((source) => ({ source, resolved: module.resolvedImportMap?.[source] }));
+  return sources.map((source) => ({
+    source,
+    resolved: module.resolvedImportMap?.[source],
+    // Models persisted before import lines were recorded fall back to the file start.
+    line: module.importLines?.[source] ?? 1,
+  }));
 }
 
 function packageSelectorMatches(value: string | undefined, selector: string): boolean {
@@ -2105,26 +2076,11 @@ function packageForImport(
   )?.name;
 }
 
-function scanFile(
-  root: string,
-  file: string,
-  rules: GuardRule[],
-  module: ProjectModel['modules'][number] | undefined,
-  astProject: Project,
-): GuardFinding[] {
-  if (!module) return [];
+function scanFile(module: ProjectModel['modules'][number], rules: GuardRule[]): GuardFinding[] {
+  const file = module.path;
   const isClient = module.directives.includes('use client');
-  let sourceFile = astProject.getSourceFile(resolve(root, file));
-  if (!sourceFile) {
-    try {
-      sourceFile = astProject.addSourceFileAtPath(resolve(root, file));
-    } catch {
-      sourceFile = undefined;
-    }
-  }
   const findings: GuardFinding[] = [];
   for (const reference of moduleImportReferences(module)) {
-    const line = sourceFile ? importLine(sourceFile, reference.source) : 1;
     for (const rule of rules) {
       if (rule.status === 'proposed' || !ruleAppliesToFile(rule, file)) continue;
       if (rule.kind === 'client-forbidden-import' && !isClient) continue;
@@ -2140,7 +2096,7 @@ function scanFile(
         ruleId: rule.id,
         severity: rule.severity,
         file,
-        line,
+        line: reference.line,
         importPath: reference.source,
         ...(reference.resolved ? { resolvedPath: reference.resolved } : {}),
         message: rule.description,
@@ -2177,7 +2133,7 @@ function scanContracts(
               ruleId: `contract:${contract.id}`,
               severity,
               file: module.path,
-              line: 1,
+              line: reference.line,
               importPath: reference.source,
               ...(reference.resolved ? { resolvedPath: reference.resolved } : {}),
               message: contract.statement,
@@ -2247,7 +2203,7 @@ function scanContracts(
             ruleId: `contract:${contract.id}`,
             severity,
             file: module.path,
-            line: 1,
+            line: reference.line,
             importPath: reference.source,
             ...(reference.resolved ? { resolvedPath: reference.resolved } : {}),
             message: contract.statement,
@@ -2631,19 +2587,15 @@ export function scanGuard(
   const model = discoverProject(root);
   const changed = options.changedOnly ? (options.changedFiles ?? changedFiles(root)) : undefined;
   const scope = changedImpactScope(model, changed);
-  const files = listSourceFiles(root).filter((file) => !scope || scope.has(file));
-  const modules = new Map(model.modules.map((module) => [module.path, module]));
-  const astProject = (() => {
-    try {
-      return new Project({ tsConfigFilePath: resolve(root, 'tsconfig.json') });
-    } catch {
-      return new Project({ skipAddingFilesFromTsConfig: true });
-    }
-  })();
+  // Rules apply to production source modules; tests, configs, and schemas are not rule-scanned.
+  const sourcePaths = new Set(
+    model.files.filter((file) => file.kind === 'source').map((file) => file.path),
+  );
+  const modules = model.modules.filter(
+    (module) => sourcePaths.has(module.path) && (!scope || scope.has(module.path)),
+  );
   const allFindings = [
-    ...files.flatMap((file) =>
-      scanFile(root, file, guardConfig.rules, modules.get(file), astProject),
-    ),
+    ...modules.flatMap((module) => scanFile(module, guardConfig.rules)),
     ...scanContracts(root, guardConfig.contracts ?? [], scope),
     ...scanBudgets(root, model, guardConfig.budgets ?? [], scope),
     ...(options.includeArchitectureInsights ? architectureInsightFindings(root, scope) : []),
@@ -2685,7 +2637,7 @@ export function scanGuard(
     configured: true,
     findings,
     suppressed: allFindings.length - findings.length,
-    scannedFiles: files.length,
+    scannedFiles: modules.length,
     waived: baselineFindings.length - findings.length,
     waiverWarnings,
     expiredWaivers,
