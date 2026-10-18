@@ -611,6 +611,28 @@ describe('scanGuard', () => {
     ).toThrow('maximum lifetime of 30 day(s)');
   });
 
+  it('initializes a Python-only repository without package.json or a TS config', () => {
+    const root = createProject({
+      'pyproject.toml': '[project]\nname = "demo"\n',
+      'demo/__init__.py': '',
+      'demo/db/session.py': 'import sqlalchemy\n',
+      'tests/test_session.py': 'from demo.db import session\n',
+    });
+
+    const { report } = initializeGuard(root);
+    const model = discoverProject(root);
+
+    expect(existsSync(join(root, GUARD_BASELINE_FILE))).toBe(true);
+    expect(report.findings).toEqual([]);
+    expect(model.files.map((file) => [file.path, file.kind])).toEqual([
+      ['demo/__init__.py', 'source'],
+      ['demo/db/session.py', 'source'],
+      ['pyproject.toml', 'config'],
+      ['tests/test_session.py', 'test'],
+    ]);
+    expect(buildConventionsMemory(model).sourceExtensions).toEqual(['.py']);
+  });
+
   it('creates waiver state during initialization and refuses an invalid renewal', () => {
     const root = createProject({ 'src/index.ts': 'export const value = 1;\n' });
 

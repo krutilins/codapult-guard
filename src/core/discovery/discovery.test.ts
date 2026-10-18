@@ -20,7 +20,9 @@ import {
   discoverProject,
   discoverProjectWithMetrics,
   clearDiscoveryCache,
+  findGuardRoot,
   importResolutionStatus,
+  pythonProjectRoots,
   type ModuleRecord,
   type ProjectModel,
 } from './discovery.js';
@@ -799,5 +801,175 @@ describe('discovery cache and resolution inputs', () => {
 
     expect(result.metrics.cacheHit).toBe(false);
     expect(result.metrics.reusedModules).toBe(2);
+  });
+});
+
+function writeTree(root: string, files: Record<string, string>): void {
+  for (const [file, content] of Object.entries(files)) {
+    mkdirSync(join(root, file, '..'), { recursive: true });
+    writeFileSync(join(root, file), content);
+  }
+}
+
+describe('Python project discovery', () => {
+  it('classifies Python sources, tests, and manifests and skips environments and caches', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-only-'));
+    roots.push(root);
+    writeTree(root, {
+      'pyproject.toml': '[project]\nname = "demo"\n',
+      'requirements.txt': 'requests\n',
+      'requirements-dev.txt': 'pytest\n',
+      'tox.ini': '[tox]\n',
+      'poetry.lock': '',
+      Pipfile: '',
+      'README.md': '# demo\n',
+      'src/demo/__init__.py': '',
+      'src/demo/config.py': 'DEBUG = False\n',
+      'src/demo/schemas.py': 'class User: ...\n',
+      'src/demo/services/billing.py': 'import stripe\n',
+      'src/demo/billing_test.py': '',
+      'src/demo/test_models.py': '',
+      'src/demo/testing.py': '',
+      'src/demo/latest.py': '',
+      'src/demo/migrations/0001_initial.py': '',
+      'tests/conftest.py': '',
+      'tests/unit/helpers.py': '',
+      'noxfile.py': '',
+      'setup.py': '',
+      '.venv/lib/python3.12/site-packages/requests/__init__.py': '',
+      'venv/lib/site.py': '',
+      'src/demo/__pycache__/config.cpython-312.pyc': '',
+      'src/demo/stale.pyc': '',
+      'src/demo.egg-info/PKG-INFO': '',
+      '.tox/py312/lib/site.py': '',
+      '.mypy_cache/3.12/demo.json': '',
+      '.pytest_cache/v/cache/lastfailed': '',
+      '.ruff_cache/content': '',
+      '.eggs/README.txt': '',
+      '.nox/lint/bin/python.py': '',
+    });
+
+    const model = discoverProject(root, { persistCache: false });
+    const kinds = Object.fromEntries(model.files.map((file) => [file.path, file.kind]));
+
+    expect(kinds).toEqual({
+      'pyproject.toml': 'config',
+      'requirements.txt': 'config',
+      'requirements-dev.txt': 'config',
+      'tox.ini': 'config',
+      'poetry.lock': 'config',
+      Pipfile: 'config',
+      'README.md': 'documentation',
+      'src/demo/__init__.py': 'source',
+      'src/demo/config.py': 'source',
+      'src/demo/schemas.py': 'source',
+      'src/demo/services/billing.py': 'source',
+      'src/demo/billing_test.py': 'test',
+      'src/demo/test_models.py': 'test',
+      'src/demo/testing.py': 'source',
+      'src/demo/latest.py': 'source',
+      'src/demo/migrations/0001_initial.py': 'migration',
+      'tests/conftest.py': 'test',
+      'tests/unit/helpers.py': 'test',
+      'noxfile.py': 'source',
+      'setup.py': 'source',
+    });
+    expect(model.tests.files).toEqual([
+      'src/demo/billing_test.py',
+      'src/demo/test_models.py',
+      'tests/conftest.py',
+      'tests/unit/helpers.py',
+    ]);
+    expect(model.insights.layers.tests).toEqual(model.tests.files);
+    expect(model.insights.layers.application).toEqual(['src/demo/services/billing.py']);
+    expect(pythonProjectRoots(model.files.map((file) => file.path))).toEqual(['.']);
+  });
+
+  it('keeps JS/TS classification unchanged for the Python test rules', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-js-tests-'));
+    roots.push(root);
+    writeTree(root, {
+      'package.json': JSON.stringify({ name: 'web' }),
+      'tests/helpers.ts': 'export const helper = 1;\n',
+      'src/test_utils.ts': 'export const util = 1;\n',
+      'src/schema.ts': 'export const schema = 1;\n',
+      'docs/notes.txt': 'notes\n',
+    });
+
+    const model = discoverProject(root, { persistCache: false });
+    const kinds = Object.fromEntries(model.files.map((file) => [file.path, file.kind]));
+
+    expect(kinds).toMatchObject({
+      'tests/helpers.ts': 'source',
+      'src/test_utils.ts': 'source',
+      'src/schema.ts': 'schema',
+      'docs/notes.txt': 'documentation',
+    });
+    expect(model.insights.layers.tests).toBeUndefined();
+  });
+
+  it('retains both languages in a mixed project and lists nested Python roots', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-mixed-'));
+    roots.push(root);
+    writeTree(root, {
+      'package.json': JSON.stringify({ name: 'mixed', private: true }),
+      'web/src/app.ts': "import { api } from './api';\nexport const app = api;\n",
+      'web/src/api.ts': 'export const api = 1;\n',
+      'services/api/pyproject.toml': '',
+      'services/api/app/main.py': 'from app import routes\n',
+      'services/api/app/routes.py': '',
+      'services/worker/setup.cfg': '',
+      'services/worker/worker.py': '',
+      'libs/legacy/setup.py': '',
+      'services/api/.venv/lib/pkg/pyproject.toml': '',
+    });
+
+    const model = discoverProject(root, { persistCache: false });
+
+    expect(model.files.filter((file) => file.kind === 'source').map((file) => file.path)).toEqual([
+      'libs/legacy/setup.py',
+      'services/api/app/main.py',
+      'services/api/app/routes.py',
+      'services/worker/worker.py',
+      'web/src/api.ts',
+      'web/src/app.ts',
+    ]);
+    expect(model.modules.map((module) => module.path)).toEqual([
+      'web/src/api.ts',
+      'web/src/app.ts',
+    ]);
+    expect(model.insights.dependencyEdges).toEqual([
+      expect.objectContaining({ from: 'web/src/app.ts', to: 'web/src/api.ts' }),
+    ]);
+    expect(pythonProjectRoots(model.files.map((file) => file.path))).toEqual([
+      'libs/legacy',
+      'services/api',
+      'services/worker',
+    ]);
+  });
+
+  it('stops at the nearest ancestor with a JS/TS or Python project marker', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'guard-python-root-')));
+    roots.push(root);
+    writeTree(root, {
+      'package.json': JSON.stringify({ name: 'monorepo' }),
+      'services/api/pyproject.toml': '',
+      'services/api/app/routes/users.py': '',
+      'services/worker/setup.cfg': '',
+      'services/worker/jobs/send.py': '',
+      'libs/legacy/setup.py': '',
+      'libs/legacy/legacy/core.py': '',
+      'services/plain/module.py': '',
+      'web/package.json': JSON.stringify({ name: 'web' }),
+      'web/pyproject.toml': '',
+      'web/src/app.ts': '',
+    });
+
+    expect(findGuardRoot(join(root, 'services/api/app/routes'))).toBe(join(root, 'services/api'));
+    expect(findGuardRoot(join(root, 'services/api'))).toBe(join(root, 'services/api'));
+    expect(findGuardRoot(join(root, 'services/worker/jobs'))).toBe(join(root, 'services/worker'));
+    expect(findGuardRoot(join(root, 'libs/legacy/legacy'))).toBe(join(root, 'libs/legacy'));
+    expect(findGuardRoot(join(root, 'services/plain'))).toBe(root);
+    expect(findGuardRoot(join(root, 'web/src'))).toBe(join(root, 'web'));
   });
 });

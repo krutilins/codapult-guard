@@ -170,7 +170,20 @@ const IGNORED_DIRECTORIES = new Set([
   'playwright-report',
   'test-results',
   'certificates',
+  '__pycache__',
+  '.venv',
+  'venv',
+  '.tox',
+  '.nox',
+  '.mypy_cache',
+  '.pytest_cache',
+  '.ruff_cache',
+  '.eggs',
 ]);
+
+function ignoredDirectory(name: string): boolean {
+  return IGNORED_DIRECTORIES.has(name) || name.endsWith('.egg-info');
+}
 
 const JS_TS_SOURCE_EXTENSIONS = new Set([
   '.js',
@@ -183,6 +196,18 @@ const JS_TS_SOURCE_EXTENSIONS = new Set([
   '.cts',
 ]);
 const PYTHON_SOURCE_EXTENSIONS = new Set(['.py']);
+/** Files whose presence marks a Python project root. Their content is not parsed (C2). */
+const PYTHON_PROJECT_MARKERS = new Set(['pyproject.toml', 'setup.cfg', 'setup.py']);
+const PYTHON_CONFIG_NAMES = new Set([
+  'pipfile',
+  'pipfile.lock',
+  'poetry.lock',
+  'uv.lock',
+  'pdm.lock',
+  'setup.cfg',
+  'pyproject.toml',
+  'tox.ini',
+]);
 const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const DOCUMENTATION_EXTENSIONS = new Set(['.md', '.mdx', '.rst', '.txt']);
 const CONFIG_NAMES = new Set([
@@ -267,7 +292,7 @@ function ignoredFile(path: string): boolean {
   return (
     (name.startsWith('.env.') && name !== '.env.example') ||
     name === '.env' ||
-    /\.(?:db|sqlite|sqlite3|tsbuildinfo|pem|key|p12|pfx)$/.test(name)
+    /\.(?:db|sqlite|sqlite3|tsbuildinfo|pem|key|p12|pfx|pyc|pyo)$/.test(name)
   );
 }
 
@@ -279,7 +304,8 @@ export function findGuardRoot(from: string = process.cwd()): string {
       existsSync(resolve(directory, '.git')) ||
       existsSync(resolve(directory, 'package.json')) ||
       existsSync(resolve(directory, 'tsconfig.json')) ||
-      existsSync(resolve(directory, 'jsconfig.json'))
+      existsSync(resolve(directory, 'jsconfig.json')) ||
+      [...PYTHON_PROJECT_MARKERS].some((marker) => existsSync(resolve(directory, marker)))
     ) {
       return directory;
     }
@@ -377,7 +403,7 @@ function workspacePackages(
 function listFiles(root: string, directory = root, maxFiles = DEFAULT_MAX_FILES): string[] {
   const result: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.isDirectory() && IGNORED_DIRECTORIES.has(entry.name)) continue;
+    if (entry.isDirectory() && ignoredDirectory(entry.name)) continue;
     const path = resolve(directory, entry.name);
     if (entry.isDirectory()) result.push(...listFiles(root, path, maxFiles - result.length));
     else if (entry.isFile() && !ignoredFile(path)) {
@@ -393,17 +419,6 @@ function listFiles(root: string, directory = root, maxFiles = DEFAULT_MAX_FILES)
   return result.sort();
 }
 
-function fileKind(path: string): ProjectFileRecord['kind'] {
-  const name = basename(path).toLowerCase();
-  if (/\.(?:test|spec)\.[^.]+$/.test(name) || path.includes('/__tests__/')) return 'test';
-  if (name.includes('schema') || path.includes('/schemas/')) return 'schema';
-  if (path.includes('/migrations/') || path.includes('/drizzle/')) return 'migration';
-  if (DOCUMENTATION_EXTENSIONS.has(extname(name))) return 'documentation';
-  if (CONFIG_NAMES.has(name) || name.includes('config')) return 'config';
-  if (JS_TS_SOURCE_EXTENSIONS.has(extname(name))) return 'source';
-  return 'other';
-}
-
 type SourceLanguage = 'js-ts' | 'python';
 
 /** Language of a source file by extension. Import resolution never crosses languages. */
@@ -412,6 +427,50 @@ function sourceLanguage(path: string): SourceLanguage | undefined {
   if (JS_TS_SOURCE_EXTENSIONS.has(extension)) return 'js-ts';
   if (PYTHON_SOURCE_EXTENSIONS.has(extension)) return 'python';
   return undefined;
+}
+
+/** Python test files (D11): `test_*.py`, `*_test.py`, `conftest.py`, or a `tests`/`test` segment. */
+function pythonTestFile(path: string): boolean {
+  const segments = path.toLowerCase().split('/');
+  const name = segments.pop() ?? '';
+  return (
+    /^test_.*\.py$|_test\.py$|^conftest\.py$/.test(name) ||
+    segments.some((segment) => segment === 'tests' || segment === 'test')
+  );
+}
+
+function fileKind(path: string): ProjectFileRecord['kind'] {
+  const name = basename(path).toLowerCase();
+  if (sourceLanguage(path) === 'python') {
+    // Python modules named like configs or schemas (settings/config.py, app/schemas.py) are
+    // ordinary modules, so only the test and migration checks apply.
+    if (pythonTestFile(path)) return 'test';
+    if (path.includes('/migrations/')) return 'migration';
+    return 'source';
+  }
+  if (/\.(?:test|spec)\.[^.]+$/.test(name) || path.includes('/__tests__/')) return 'test';
+  if (name.includes('schema') || path.includes('/schemas/')) return 'schema';
+  if (path.includes('/migrations/') || path.includes('/drizzle/')) return 'migration';
+  // Before the documentation check, which would classify requirements.txt by its extension.
+  if (PYTHON_CONFIG_NAMES.has(name) || /^requirements.*\.txt$/.test(name)) return 'config';
+  if (DOCUMENTATION_EXTENSIONS.has(extname(name))) return 'documentation';
+  if (CONFIG_NAMES.has(name) || name.includes('config')) return 'config';
+  if (JS_TS_SOURCE_EXTENSIONS.has(extname(name))) return 'source';
+  return 'other';
+}
+
+/**
+ * Directories containing a Python project marker, sorted, with `.` for the project root. Task 05
+ * uses them as resolution roots (D9).
+ */
+export function pythonProjectRoots(paths: string[]): string[] {
+  return [
+    ...new Set(
+      paths
+        .filter((path) => PYTHON_PROJECT_MARKERS.has(basename(path)))
+        .map((path) => dirname(path).replaceAll('\\', '/')),
+    ),
+  ].sort();
 }
 
 /**
@@ -800,6 +859,7 @@ function inferFrameworks(
 function layerForPath(path: string): string {
   const segments = path.toLowerCase().split('/');
   if (segments.includes('__tests__') || /\.(?:test|spec)\./.test(path)) return 'tests';
+  if (sourceLanguage(path) === 'python' && pythonTestFile(path)) return 'tests';
   if (segments.some((segment) => ['app', 'pages', 'routes', 'api'].includes(segment))) {
     return 'routes';
   }
