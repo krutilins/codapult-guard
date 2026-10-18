@@ -579,7 +579,7 @@ export const key = process.env['API_KEY'];
     writeFileSync(join(root, 'package.json'), '{\n  "name": "cache",\n  "scripts": {}\n}\n');
     discoverProject(root);
     const refreshedCache = JSON.parse(readFileSync(cachePath, 'utf8')) as { version?: unknown };
-    expect(refreshedCache.version).toBe(6);
+    expect(refreshedCache.version).toBe(7);
   });
 
   it('does not persist discovery cache through a symlinked Guard directory', () => {
@@ -935,6 +935,10 @@ describe('Python project discovery', () => {
       'web/src/app.ts',
     ]);
     expect(model.modules.map((module) => module.path)).toEqual([
+      'libs/legacy/setup.py',
+      'services/api/app/main.py',
+      'services/api/app/routes.py',
+      'services/worker/worker.py',
       'web/src/api.ts',
       'web/src/app.ts',
     ]);
@@ -971,5 +975,110 @@ describe('Python project discovery', () => {
     expect(findGuardRoot(join(root, 'libs/legacy/legacy'))).toBe(join(root, 'libs/legacy'));
     expect(findGuardRoot(join(root, 'services/plain'))).toBe(root);
     expect(findGuardRoot(join(root, 'web/src'))).toBe(join(root, 'web'));
+  });
+});
+
+describe('Python module parsing', () => {
+  it('records Python import facts, lines, symbols, and declarations', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-parse-'));
+    roots.push(root);
+    writeTree(root, {
+      'pyproject.toml': '',
+      'app/views.py': [
+        'from __future__ import annotations',
+        'import os.path as osp',
+        'from .db import models, session as db',
+        'from typing import TYPE_CHECKING',
+        'if TYPE_CHECKING:',
+        '    from app.services import UserService',
+        'def handler():',
+        '    from .db import cache',
+        '    return cache',
+        'class View: pass',
+        'LIMIT = 10',
+        '',
+      ].join('\n'),
+    });
+
+    const model = discoverProject(root, { persistCache: false });
+    const views = model.modules.find((module) => module.path === 'app/views.py');
+
+    expect(views).toMatchObject({
+      imports: ['.db', '__future__', 'app.services', 'os.path', 'typing'],
+      importedSymbols: [
+        'TYPE_CHECKING',
+        'UserService',
+        'annotations',
+        'cache',
+        'db',
+        'models',
+        'osp',
+      ],
+      importLines: {
+        __future__: 1,
+        'os.path': 2,
+        '.db': 3,
+        typing: 4,
+        'app.services': 6,
+      },
+      exports: [],
+      dynamicImports: [],
+      calls: [],
+      directives: [],
+      resolvedImports: [],
+      resolvedImportMap: {},
+      declarations: { classes: 1, functions: 1, interfaces: 0, types: 0, variables: 1 },
+    });
+    expect(views?.pythonImports).toEqual([
+      { module: '__future__', names: ['annotations'], line: 1 },
+      { module: 'os.path', line: 2 },
+      { module: '.db', names: ['models', 'session'], line: 3 },
+      { module: 'typing', names: ['TYPE_CHECKING'], line: 4 },
+      { module: 'app.services', names: ['UserService'], line: 6 },
+      { module: '.db', names: ['cache'], line: 8 },
+    ]);
+    expect(views?.parseDiagnostics).toBeUndefined();
+    expect(views?.unresolvedImports).toBeUndefined();
+    expect(importResolutionStatus(views!, '.db')).toBe('unresolved');
+    expect(importResolutionStatus(views!, 'os.path')).toBe('external');
+    expect(model.insights.dependencyEdges).toEqual([]);
+  });
+
+  it('keeps a malformed Python module with diagnostics and discovers the rest', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-malformed-'));
+    roots.push(root);
+    writeTree(root, {
+      'pyproject.toml': '',
+      'app/broken.py': 'import before\ndef broken(:\n    pass\nfrom import ghost\nimport after\n',
+      'app/fine.py': 'import json\n',
+    });
+
+    const model = discoverProject(root, { persistCache: false });
+    const broken = model.modules.find((module) => module.path === 'app/broken.py');
+
+    expect(model.modules.map((module) => module.path)).toEqual(['app/broken.py', 'app/fine.py']);
+    expect(broken?.imports).toEqual(['after', 'before']);
+    expect(broken?.parseDiagnostics?.length).toBeGreaterThan(0);
+    expect(broken?.parseDiagnostics?.length).toBeLessThanOrEqual(5);
+  });
+
+  it('does not load the Python parser for a project without Python files', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-lazy-'));
+    roots.push(root);
+    writeTree(root, {
+      'package.json': JSON.stringify({ name: 'ts-only' }),
+      'src/index.ts': "import { value } from './value';\nexport { value };\n",
+      'src/value.ts': 'export const value = 1;\n',
+    });
+    vi.resetModules();
+    const discovery = await import('./discovery.js');
+    const parser = await import('./python-imports.js');
+
+    discovery.discoverProject(root, { persistCache: false });
+    expect(parser.isPythonParserLoaded()).toBe(false);
+
+    writeFileSync(join(root, 'src/tool.py'), 'import os\n');
+    discovery.discoverProject(root, { persistCache: false });
+    expect(parser.isPythonParserLoaded()).toBe(true);
   });
 });

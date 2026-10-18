@@ -14,6 +14,7 @@ import {
 import { basename, dirname, extname, join, normalize, relative, resolve } from 'node:path';
 import { Project, SyntaxKind, type SourceFile } from 'ts-morph';
 import { config } from '../config.js';
+import { parsePythonSource, type PythonImportFact } from './python-imports.js';
 
 export interface ProjectFileRecord {
   path: string;
@@ -43,6 +44,10 @@ export interface ModuleRecord {
     variables: number;
   };
   directives: string[];
+  /** Python import statements as parsed, the input of Python resolution. */
+  pythonImports?: PythonImportFact[] | undefined;
+  /** Up to 5 lines with syntax error nodes. Informational; never produces findings (D3). */
+  parseDiagnostics?: number[] | undefined;
 }
 
 export interface CapabilitySignal {
@@ -235,7 +240,7 @@ const discoveryReuse = new Map<string, number>();
 const discoveryCacheHits = new Map<string, boolean>();
 // Bump when the persisted model shape changes; old cache entries must never
 // bypass discovery and return an incomplete ProjectModel.
-const DISCOVERY_CACHE_VERSION = 6;
+const DISCOVERY_CACHE_VERSION = 7;
 
 function discoveryCachePath(root: string): string {
   return resolve(root, `.${config.appName}/guard/cache.json`);
@@ -727,6 +732,37 @@ function parseJsTsModule(
   };
 }
 
+/** Python parse facts (D4). Resolution fields are filled by the Python resolver (Task 05). */
+function parsePythonModule(root: string, path: string): ModuleRecord | undefined {
+  let source: string;
+  try {
+    source = readFileSync(resolve(root, path), 'utf8');
+  } catch {
+    return undefined;
+  }
+  const parsed = parsePythonSource(source);
+  const importLines: Record<string, number> = {};
+  for (const fact of parsed.imports) {
+    if (!Object.hasOwn(importLines, fact.module)) importLines[fact.module] = fact.line;
+  }
+  return {
+    path,
+    contentHash: contentHash(root, path),
+    imports: [...new Set(parsed.imports.map((fact) => fact.module))].sort(),
+    importedSymbols: [...new Set(parsed.importedSymbols)].sort(),
+    exports: [],
+    calls: [],
+    resolvedImports: [],
+    resolvedImportMap: {},
+    importLines,
+    dynamicImports: [],
+    declarations: parsed.declarations,
+    directives: [],
+    pythonImports: parsed.imports,
+    ...(parsed.errorLines.length > 0 ? { parseDiagnostics: parsed.errorLines } : {}),
+  };
+}
+
 function parseModule(
   project: Project,
   root: string,
@@ -734,9 +770,10 @@ function parseModule(
   projectFiles: Set<string>,
   aliases: PathAlias[],
 ): ModuleRecord | undefined {
-  return sourceLanguage(path) === 'js-ts'
-    ? parseJsTsModule(project, root, path, projectFiles, aliases)
-    : undefined;
+  const language = sourceLanguage(path);
+  if (language === 'js-ts') return parseJsTsModule(project, root, path, projectFiles, aliases);
+  if (language === 'python') return parsePythonModule(root, path);
+  return undefined;
 }
 
 /**
@@ -769,9 +806,10 @@ export type ImportResolutionStatus = 'resolved' | 'unresolved' | 'external';
  * Resolution status of one import specifier of a module.
  *
  * `resolved` means the specifier resolves to a project file, which may be a non-module file such
- * as a stylesheet. Relative specifiers are always either resolved or listed as unresolved, because
- * the path fallback resolves them when the parser does not. `external` means outside the module
- * graph by static rules; it does not mean the package is installed.
+ * as a stylesheet. JS/TS relative specifiers are always either resolved or listed as unresolved,
+ * because the path fallback resolves them when the parser does not. A Python relative import
+ * without a target is unresolved. `external` means outside the module graph by static rules; it
+ * does not mean the package is installed.
  */
 export function importResolutionStatus(
   module: ModuleRecord,
@@ -779,7 +817,8 @@ export function importResolutionStatus(
 ): ImportResolutionStatus {
   if (module.resolvedImportMap?.[specifier] !== undefined) return 'resolved';
   if (module.unresolvedImports?.includes(specifier)) return 'unresolved';
-  return specifier.startsWith('.') ? 'resolved' : 'external';
+  if (!specifier.startsWith('.')) return 'external';
+  return sourceLanguage(module.path) === 'python' ? 'unresolved' : 'resolved';
 }
 
 function runGit(root: string, args: string[]): string | undefined {

@@ -2165,6 +2165,8 @@ function scanContracts(
       }
       if (
         contract.kind === 'required-call' &&
+        // Python records carry no calls (C1). Task 06.1 reports these modules as not applicable.
+        module.pythonImports === undefined &&
         contract.mustCall !== undefined &&
         contract.mustCall.length > 0 &&
         !module.calls.some((call) =>

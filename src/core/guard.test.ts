@@ -633,6 +633,29 @@ describe('scanGuard', () => {
     expect(buildConventionsMemory(model).sourceExtensions).toEqual(['.py']);
   });
 
+  it('does not report required-call contracts on Python modules, which carry no calls', () => {
+    const root = createProject({
+      'pyproject.toml': '',
+      'app/handler.py': 'import logging\n',
+      'app/handler.ts': 'export const handler = () => 1;\n',
+    });
+    const findings = scanGuard(root, {
+      version: 1,
+      rules: [],
+      contracts: [
+        {
+          id: 'audit',
+          statement: 'Handlers must call audit.',
+          kind: 'required-call',
+          scope: ['app'],
+          mustCall: ['audit'],
+        },
+      ],
+    }).findings;
+
+    expect(findings.map((finding) => finding.file)).toEqual(['app/handler.ts']);
+  });
+
   it('creates waiver state during initialization and refuses an invalid renewal', () => {
     const root = createProject({ 'src/index.ts': 'export const value = 1;\n' });
 
