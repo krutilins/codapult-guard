@@ -12,6 +12,7 @@
 ### Behavior changes
 
 * **root:** Guard now also stops at the nearest directory with `pyproject.toml`, `setup.cfg`, or `setup.py` when it looks for the project root. Running Guard inside a nested Python project uses that project as the root.
+* **policy surface:** `pyproject.toml`, `setup.cfg`, and `setup.py` are now built-in protected paths at any depth, because they decide the project root. Changing one is reported in `policySurface` and fails `verify --fail-on-protected-changes`.
 * **rules:** rules now scan `.mjs`, `.cjs`, `.mts`, and `.cts` files, and no longer scan files under `__tests__/`, consistent with `.test.` and `.spec.` files. `scannedFiles` counts source modules only, so the number drops on most projects.
 * **contracts:** contract findings and rule findings for `require()` report the import line instead of line 1. Fingerprints do not include lines, so baselines and waivers keep matching.
 * **resolution:** directory requires such as `require('..')` and `require('../')` now resolve to the directory index, which adds graph edges. Findings on these imports gain a `resolvedPath`, which changes their fingerprints, so baselined or waived findings on directory requires appear once more after upgrading.

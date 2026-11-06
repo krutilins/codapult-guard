@@ -423,6 +423,35 @@ describe('runGuardVerification', () => {
     });
   });
 
+  it('treats Python project markers as protected paths at any depth', () => {
+    const { root, base } = createGitPolicyRoot(
+      { 'app/main.py': 'x = 1\n' },
+      { version: 1, rules: [] },
+    );
+    mkdirSync(join(root, 'services/api'), { recursive: true });
+    writeFileSync(join(root, 'pyproject.toml'), '[project]\nname = "app"\n');
+    writeFileSync(join(root, 'setup.cfg'), '[metadata]\nname = app\n');
+    writeFileSync(join(root, 'setup.py'), 'x = 1\n');
+    writeFileSync(join(root, 'services/api/pyproject.toml'), '[project]\nname = "api"\n');
+
+    const result = runGuardVerification(root, {
+      policyBase: base,
+      failOnProtectedChanges: true,
+      projectChecks: false,
+      tools: 'off',
+    });
+
+    expect(result.errorCode).toBe('GUARD_PROTECTED_PATH_CHANGED');
+    expect(result.policySurface?.changedPaths).toEqual(
+      expect.arrayContaining([
+        'pyproject.toml',
+        'setup.cfg',
+        'setup.py',
+        'services/api/pyproject.toml',
+      ]),
+    );
+  });
+
   it('checks proposed code against base policy without granting approval to policy changes', () => {
     const baseRule = {
       id: 'forbidden-import',

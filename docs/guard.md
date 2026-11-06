@@ -614,8 +614,9 @@ CODEOWNERS and protected branches remain responsible for requiring and authorizi
 review; Guard does not impersonate a reviewer or verify provider credentials.
 
 Guard also compares verification-sensitive paths against the base. Built-in paths include CI
-workflows, CODEOWNERS, package manifests and lockfiles, and common formatter, linter, typecheck,
-and test configuration. Add project-specific globs to `protectedPaths` in the base revision's
+workflows, CODEOWNERS, package manifests and lockfiles, Python project markers (`pyproject.toml`,
+`setup.cfg`, and `setup.py`), and common formatter, linter, typecheck, and test configuration. Add
+project-specific globs to `protectedPaths` in the base revision's
 `.codapult/guard/rules.json`. The `--fail-on-protected-changes` option requires `--policy-base`
 and fails if a listed non-workflow path changes, or if a changed contracted workflow fails its
 CI integrity checks. JSON output lists the matched paths and reports whether a workflow changed.
