@@ -2,7 +2,7 @@
   "name": "@codapult/guard",
   "version": "0.9.0",
   "mcpName": "io.github.codapult/guard",
-  "description": "Local-first architecture guardrails for JavaScript and TypeScript projects, with first-class support for Next.js SaaS and AI-assisted development",
+  "description": "Local-first architecture guardrails for JavaScript, TypeScript, and Python projects, with first-class support for Next.js SaaS and AI-assisted development",
   "license": "MIT",
   "packageManager": "pnpm@12.4.2+sha512.08adc6613180275c7c9edada39dcf08c9c61ad4e7eaf330a4f3461f102b0f907423454d117f98e72d47fef0616070644d7bffc973a6a57f5090a6d7c368b07c9",
   "engines": {
@@ -65,6 +65,7 @@
     "test:guard:fixtures:regression": "pnpm build && node scripts/guard-fixture-regression.mjs",
     "test:guard:fixtures:native": "pnpm build && node scripts/guard-fixture-native.mjs",
     "test:guard:fixtures:adversarial": "pnpm build && node scripts/guard-fixture-adversarial.mjs",
+    "test:guard:fixtures:python": "pnpm build && node scripts/guard-fixture-python.mjs",
     "test:guard:fixtures:all": "pnpm build && node scripts/guard-fixture-suite.mjs",
     "test:guard:fixtures:full": "pnpm build && node scripts/guard-fixture-suite.mjs --all",
     "test:guard:concurrent": "pnpm build && node scripts/guard-concurrent-state.mjs",
@@ -85,6 +86,7 @@
     "nextjs",
     "javascript",
     "typescript",
+    "python",
     "react",
     "mcp",
     "saas"

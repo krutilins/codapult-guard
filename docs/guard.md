@@ -23,6 +23,7 @@ deterministic evidence.
 - [Command reference](#command-reference)
 - [Rules, contracts, and proposals](#rules-contracts-and-proposals)
 - [What Guard discovers](#what-guard-discovers)
+- [Python projects](#python-projects)
 - [AI-agent and MCP workflow](#ai-agent-and-mcp-workflow)
 - [CI and machine-readable output](#ci-and-machine-readable-output)
 - [Security and data handling](#security-and-data-handling)
@@ -510,6 +511,33 @@ references to the same module are deduplicated into one finding. When TypeScript
 or re-export, findings retain the original import specifier and expose the resolved project file as
 `resolvedPath`, so an agent can repair the actual boundary without losing source context.
 
+### Python imports in rules and contracts
+
+`forbidden-import` rules and `import-boundary` contracts apply to Python modules. A pattern is
+compared with three values of each Python import:
+
+- the spelling as written, such as `app.db` or `..db`;
+- the absolute dotted name of a relative import, such as `app.db` for `from ..db import x` in
+  `app/api/views.py`;
+- the resolved project file, such as `app/db/session.py`.
+
+For Python module names, `.` is a segment boundary in addition to `/`. The pattern `app.db` matches
+`app.db` and `app.db.models` but not `app.dbutils`. A trailing `*` stays a raw prefix in every
+language, so `app.db*` also matches `app.dbutils`. Patterns that contain `/` match resolved paths,
+so `app/db` matches every import that resolves to a file under `app/db/`. JavaScript and TypeScript
+matching is unchanged: `lodash` does not match `lodash.debounce`.
+
+`from app.db import models` records two references: the module `app.db` as written and the
+submodule `app.db.models`. A rule on `app.db` reports both on the same line, each with its own
+fingerprint, because they are separate dependencies.
+
+A `mustImport` contract counts every statically detected import, including imports inside
+functions and `if TYPE_CHECKING:` blocks. It confirms that the import statement is present, not
+that the module is loaded at runtime. `required-call` contracts, `package-boundary` contracts, and
+`client-forbidden-import` rules skip Python modules and appear under
+[checks that do not apply](#checks-that-do-not-apply). The `imports` budget counts Python import
+references, and the `lines` and `bytes` budgets work as for any file.
+
 ### Proposals and approval
 
 Generate proposals after initialization or a structural change:
@@ -620,6 +648,162 @@ The model is useful for questions such as:
 Domain signals for payments, auth, jobs, email, AI, storage, database, deployment, security,
 observability, and other areas are review context by default. They do not become blocking rules
 merely because a package name or filename resembles a domain.
+
+### Graph completeness and limits
+
+The dependency graph contains the imports that discovery resolves to project files. Each import is
+`resolved`, `unresolved` (it looks local, such as a relative import, but no project file matches),
+or `external` (a package or the standard library). The model stores a summary per language in
+`insights.importResolution`: module count, import count, the three status counts, and the number of
+modules with parse diagnostics. `codapult-guard doctor` prints this summary from the saved model.
+
+An unresolved import is a missing edge. If `services.py` imports `database.py` through a path that
+does not resolve, a change to `database.py` shows no effect on the modules that use `services.py`.
+`impact` output, the `codapult_guard_impact` MCP tool, and the impact section of `verify` therefore
+include a `graph` status:
+
+- `complete`: no affected module has an unresolved import. The graph is complete within the
+  supported static subset. Imports with computed names, such as `importlib.import_module(name)` or
+  `import(path)`, are never seen, so `complete` is not a runtime guarantee.
+- `partial`: affected modules have unresolved imports. The output lists up to 20 of them and the
+  total count.
+
+External imports never make the status `partial`. The status is informational and does not change
+exit codes.
+
+A module with parse diagnostics had error nodes in its syntax tree. Its imports are still
+extracted, but an import inside a damaged statement may be missing. The Python parser also reports
+diagnostics for some valid syntax, such as a bare `yield` statement, so a diagnostic does not always
+mean the file has a syntax error.
+
+Other limits of the graph:
+
+- Each language has its own graph. Guard sees no dependency between a TypeScript frontend and a
+  Python API that it calls over HTTP, or between services connected through a task queue or message
+  broker. Impact analysis stops at the language boundary.
+- `insights.impactPaths` starts only from Next.js route handlers and server actions. Python modules
+  appear there only when a JavaScript or TypeScript entrypoint reaches them, which the previous point
+  rules out in practice. The `dependents` and `dependencies` lists of `impact` cover Python modules.
+- For Python modules, only `routes` and `api` directories mark the `routes` layer. `app` and `pages`
+  are Next.js route directories, while `app` is a common name for a Python package.
+
+## Python projects
+
+Guard analyzes Python source files without a Python interpreter. It parses each `.py` file in
+process and never imports or runs project code. Discovery and policy checks start no subprocess
+other than `git`; only `verify` runs the project commands configured for it. No dependency
+installation or virtual environment is needed.
+
+### What is supported
+
+- **Syntax:** Python 3.8 to 3.13 as parsed by `@lezer/python`. Imports in newer syntax are still
+  extracted, but the module may report parse diagnostics.
+- **Import forms:** `import a.b.c`, `import a.b as x`, `from a.b import c, d`, parenthesized
+  multiline imports, `from a import *`, and relative imports such as `from . import x` and
+  `from ..pkg.mod import y`.
+- **Imports in blocks:** imports inside functions, classes, `if TYPE_CHECKING:`, and
+  `try/except ImportError` count as ordinary imports with their own line numbers. A lazy or
+  type-only import still couples two modules, as `import type` does in TypeScript.
+- **Layouts:** flat layouts, `src/` layouts, nested Python projects, monorepos with one project per
+  package, and namespace packages (directories without `__init__.py`), including a namespace split
+  across several packages.
+
+### Root detection and discovery
+
+`codapult-guard` stops at the nearest ancestor directory that contains `package.json`,
+`pyproject.toml`, `setup.cfg`, or `setup.py`. Running Guard from inside a nested Python project
+therefore uses that project as the root.
+
+Every `.py` file is a module. A file is a test when its name matches `test_*.py` or `*_test.py`,
+when it is `conftest.py`, or when a directory in its path is named `tests` or `test`. Files in a nested `migrations/` directory, such as `app/migrations/0001_initial.py`, are
+migrations. Unlike JavaScript and TypeScript, names such as `config.py`,
+`schemas.py`, or a `schemas/` directory stay ordinary modules, because other modules import them.
+`pyproject.toml`, `setup.cfg`, `requirements*.txt`, `Pipfile`, `tox.ini`, and lockfiles of Poetry,
+uv, PDM, and Pipenv are config files. `.pyi` stubs are not modules.
+
+Guard skips `__pycache__`, `.venv`, `venv`, `.tox`, `.nox`, `.mypy_cache`, `.pytest_cache`,
+`.ruff_cache`, `.eggs`, directories ending in `.egg-info`, and `.pyc` and `.pyo` files.
+
+### How imports resolve
+
+Guard looks up a dotted name one segment at a time, as the import system does, in these roots:
+
+1. the nearest directory of the importing file that contains `pyproject.toml`, `setup.cfg`, or
+   `setup.py`, and its `src/` directory;
+2. the Guard root and its `src/` directory;
+3. every other Python project root in the repository and its `src/` directory.
+
+A package `__init__.py` wins over a module file of the same name. The first root with a regular
+package or module decides each segment, and its submodules are searched only inside that package.
+A module that exists in two roots of the same group is ambiguous and stays unresolved. A local
+module with the name of a standard-library or installed package wins, as it does at runtime when
+the project root comes first on `sys.path`. Relative imports resolve by path from the importing
+file. Python imports resolve only to `.py` files, and JavaScript and TypeScript imports never
+resolve to `.py` files.
+
+Each import is `resolved`, `unresolved`, or `external`. A relative import without a target and an
+absolute import whose first segment names a local module or directory are `unresolved`. Everything
+else is `external`. `external` does not mean the package is installed: Guard cannot know that
+without an environment.
+
+### Graph semantics
+
+- The graph holds static references, including `TYPE_CHECKING`, conditional, and function-level
+  imports. A cycle formed by type-only imports is therefore reported as a cycle.
+- It is a direct import graph. `import a.b.c` creates one edge to `a/b/c.py`. The parent
+  `__init__.py` files run at runtime, but they are not edges, because every submodule would
+  otherwise depend on its package and most packages would form cycles.
+- `from app.db import models` creates an edge to `app/db/models.py` and records two references:
+  `app.db` as written and the submodule `app.db.models`. A bare import of a namespace package has
+  no file and creates no edge.
+- Imports with computed names, such as `importlib.import_module(name)` and `__import__(name)`, are
+  not seen.
+- There are no edges between languages. See
+  [Graph completeness and limits](#graph-completeness-and-limits).
+
+### Rules, contracts, and budgets
+
+| Kind                                       | Python behavior                                                      |
+| ------------------------------------------ | -------------------------------------------------------------------- |
+| `forbidden-import`                         | Applies, with findings at the import line                            |
+| `import-boundary` `mustNotImport`          | Applies, with findings at the import line                            |
+| `import-boundary` `mustImport`             | Applies; every static import counts                                  |
+| Budgets `lines`, `bytes`, `imports`        | Apply; `imports` counts written and derived references               |
+| `client-forbidden-import`                  | Skipped and reported as not applicable (no `"use client"` in Python) |
+| `required-call`                            | Skipped and reported as not applicable (calls are not collected)     |
+| `package-boundary`                         | Skipped and reported as not applicable (no `package.json` workspace) |
+| `architecture-cycle` insight               | Applies                                                              |
+| `client-server-boundary` insight           | JavaScript and TypeScript only                                       |
+| `undeclared-environment-reference` insight | JavaScript and TypeScript only                                       |
+
+Pattern matching for Python imports is described in
+[Python imports in rules and contracts](#python-imports-in-rules-and-contracts). Skipped checks
+appear under [checks that do not apply](#checks-that-do-not-apply).
+
+### What `init` produces for a Python-only repository
+
+`init` works without `package.json` or a TypeScript config. The model contains files, modules,
+imports, resolved edges, cycles, import hotspots of external packages, dependency and layer edges,
+and Git information. Layers come from directory names such as `api`, `routes`, `services`, `db`,
+`models`, and `config`. For Python modules `app` and `pages` do not mark the `routes` layer.
+
+Some capabilities and packs can appear, because their signals also match file paths such as
+`auth/` or `billing/` and import names such as `stripe`. Without package metadata their confidence stays at medium or lower. Proposals that depend on the
+`identity` and `persistence` capabilities can still appear.
+
+These parts stay empty for Python: frameworks, dependencies, scripts, route details, client and
+server boundaries, environment references, generated rules, and `insights.impactPaths`, which
+starts only from Next.js entrypoints.
+
+### Not implemented
+
+- Calls, decorators, and environment variable reads, so `required-call` contracts and the
+  environment insight do not cover Python.
+- Python package membership for `package-boundary` contracts.
+- Dependencies from `pyproject.toml` or `requirements*.txt`, framework detection (Django, FastAPI,
+  Flask), and Python entrypoints for impact paths.
+- Running Python tools such as Ruff, mypy, or pytest as verification adapters.
+- Dynamic imports with computed names and `sys.path` changes made at runtime.
 
 ## AI-agent and MCP workflow
 

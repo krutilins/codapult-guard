@@ -5,6 +5,10 @@ import { performance } from 'node:perf_hooks';
 import { discoverProjectWithMetrics } from '../dist/index.js';
 
 const files = Number(process.env.GUARD_BENCH_FILES ?? 1000);
+// `python` builds a chain of Python packages instead of TypeScript workspace packages (D13).
+const language = process.env.GUARD_BENCH_LANGUAGE ?? 'typescript';
+if (!['typescript', 'python'].includes(language))
+  throw new Error('GUARD_BENCH_LANGUAGE must be typescript or python.');
 const runs = Number(process.env.GUARD_BENCH_RUNS ?? 3);
 const maxMs = Number(process.env.GUARD_BENCH_MAX_MS ?? 0);
 if (!Number.isInteger(files) || files < 1)
@@ -12,8 +16,7 @@ if (!Number.isInteger(files) || files < 1)
 if (!Number.isInteger(runs) || runs < 1)
   throw new Error('GUARD_BENCH_RUNS must be a positive integer.');
 
-const root = mkdtempSync(join(tmpdir(), 'codapult-guard-benchmark-'));
-try {
+function writeTypeScriptProject(root) {
   mkdirSync(join(root, 'packages'), { recursive: true });
   writeFileSync(
     join(root, 'package.json'),
@@ -35,6 +38,26 @@ try {
       `${next}export const value = ${index}${next ? ' + next' : ''};\n`,
     );
   }
+}
+
+function writePythonProject(root) {
+  writeFileSync(join(root, 'pyproject.toml'), '[project]\nname = "guard-benchmark"\n');
+  for (let index = 0; index < files; index += 1) {
+    const packageRoot = join(root, 'app', `package_${String(index).padStart(4, '0')}`);
+    mkdirSync(packageRoot, { recursive: true });
+    writeFileSync(join(packageRoot, '__init__.py'), '');
+    const next =
+      index + 1 < files
+        ? `from app.package_${String(index + 1).padStart(4, '0')} import module as next_module\n`
+        : '';
+    writeFileSync(join(packageRoot, 'module.py'), `${next}VALUE = ${index}\n`);
+  }
+}
+
+const root = mkdtempSync(join(tmpdir(), 'codapult-guard-benchmark-'));
+try {
+  if (language === 'python') writePythonProject(root);
+  else writeTypeScriptProject(root);
   const timings = [];
   let last;
   for (let run = 0; run < runs; run += 1) {
@@ -45,6 +68,7 @@ try {
     last = discovery;
   }
   const result = {
+    language,
     files,
     runs,
     timings,

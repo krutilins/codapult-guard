@@ -53,3 +53,6 @@ jobs:
 
       - name: Run Guard mutation regression matrix
         run: pnpm test:guard:fixtures:regression
+
+      - name: Run Guard Python fixtures
+        run: pnpm test:guard:fixtures:python

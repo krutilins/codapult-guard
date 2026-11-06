@@ -8,6 +8,7 @@ import {
   GUARD_CONTRACTS_FILE,
   GUARD_RULES_FILE,
 } from '../guard.js';
+import { initializeGuard } from '../guard.js';
 import { diagnoseGuard } from './doctor.js';
 
 const roots: string[] = [];
@@ -80,5 +81,31 @@ describe('diagnoseGuard', () => {
       status: 'warning',
       message: "Boundary rule 'client-no-db' is warning-only and will not block changes.",
     });
+  });
+
+  it('reports import resolution per language from the saved project model', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-doctor-imports-'));
+    roots.push(root);
+    mkdirSync(join(root, 'app'), { recursive: true });
+    writeFileSync(join(root, 'pyproject.toml'), '');
+    writeFileSync(join(root, 'app/__init__.py'), '');
+    writeFileSync(join(root, 'app/main.py'), 'from .gone import value\nimport requests\n');
+    initializeGuard(root);
+
+    const report = diagnoseGuard(root);
+
+    expect(report.importResolution).toEqual([
+      {
+        language: 'python',
+        modules: 2,
+        imports: 2,
+        resolved: 0,
+        unresolved: 1,
+        external: 1,
+        modulesWithParseDiagnostics: 0,
+      },
+    ]);
+    // Unresolved imports are informational and do not change the doctor status.
+    expect(report.status).toBe('ok');
   });
 });

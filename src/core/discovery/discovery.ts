@@ -125,7 +125,25 @@ export interface ProjectModel {
       layers: string[];
       boundaries: string[];
     }[];
+    /** Import resolution per language. Absent in models persisted before it was recorded. */
+    importResolution?: ImportResolutionSummary[] | undefined;
   };
+}
+
+/**
+ * Import resolution counts for the modules of one language (D16). Counts cover the static imports
+ * discovery records, so a module with no unresolved imports is complete within the supported
+ * static subset, not at runtime.
+ */
+export interface ImportResolutionSummary {
+  language: SourceLanguage;
+  modules: number;
+  imports: number;
+  resolved: number;
+  unresolved: number;
+  external: number;
+  /** Modules with parser error nodes, which may hide imports (D3). */
+  modulesWithParseDiagnostics: number;
 }
 
 export interface DiscoveryMetrics {
@@ -247,7 +265,7 @@ const discoveryReuse = new Map<string, number>();
 const discoveryCacheHits = new Map<string, boolean>();
 // Bump when the persisted model shape changes; old cache entries must never
 // bypass discovery and return an incomplete ProjectModel.
-const DISCOVERY_CACHE_VERSION = 7;
+const DISCOVERY_CACHE_VERSION = 8;
 
 function discoveryCachePath(root: string): string {
   return resolve(root, `.${config.appName}/guard/cache.json`);
@@ -431,10 +449,10 @@ function listFiles(root: string, directory = root, maxFiles = DEFAULT_MAX_FILES)
   return result.sort();
 }
 
-type SourceLanguage = 'js-ts' | 'python';
+export type SourceLanguage = 'js-ts' | 'python';
 
 /** Language of a source file by extension. Import resolution never crosses languages. */
-function sourceLanguage(path: string): SourceLanguage | undefined {
+export function sourceLanguage(path: string): SourceLanguage | undefined {
   const extension = extname(path);
   if (JS_TS_SOURCE_EXTENSIONS.has(extension)) return 'js-ts';
   if (PYTHON_SOURCE_EXTENSIONS.has(extension)) return 'python';
@@ -869,6 +887,39 @@ export function importResolutionStatus(
   return specifier.startsWith('.') ? 'resolved' : 'external';
 }
 
+/** Unique import specifiers of a module: static imports, re-exports, and literal dynamic imports. */
+export function moduleImportSpecifiers(module: ModuleRecord): string[] {
+  return [...new Set([...module.imports, ...module.exports, ...module.dynamicImports])];
+}
+
+/** Import resolution summary per language, sorted by language. */
+export function summarizeImportResolution(
+  modules: readonly ModuleRecord[],
+): ImportResolutionSummary[] {
+  const summaries = new Map<SourceLanguage, ImportResolutionSummary>();
+  for (const module of modules) {
+    const language = sourceLanguage(module.path);
+    if (!language) continue;
+    const summary = summaries.get(language) ?? {
+      language,
+      modules: 0,
+      imports: 0,
+      resolved: 0,
+      unresolved: 0,
+      external: 0,
+      modulesWithParseDiagnostics: 0,
+    };
+    summary.modules += 1;
+    if ((module.parseDiagnostics?.length ?? 0) > 0) summary.modulesWithParseDiagnostics += 1;
+    for (const specifier of moduleImportSpecifiers(module)) {
+      summary.imports += 1;
+      summary[importResolutionStatus(module, specifier)] += 1;
+    }
+    summaries.set(language, summary);
+  }
+  return [...summaries.values()].sort((left, right) => left.language.localeCompare(right.language));
+}
+
 function runGit(root: string, args: string[]): string | undefined {
   try {
     return execFileSync('git', args, { cwd: root, stdio: 'pipe' }).toString().trim();
@@ -946,10 +997,12 @@ function inferFrameworks(
 function layerForPath(path: string): string {
   const segments = path.toLowerCase().split('/');
   if (segments.includes('__tests__') || /\.(?:test|spec)\./.test(path)) return 'tests';
-  if (sourceLanguage(path) === 'python' && pythonTestFile(path)) return 'tests';
-  if (segments.some((segment) => ['app', 'pages', 'routes', 'api'].includes(segment))) {
-    return 'routes';
-  }
+  const python = sourceLanguage(path) === 'python';
+  if (python && pythonTestFile(path)) return 'tests';
+  // `app/` and `pages/` are Next.js route directories. In Python `app` is usually the top-level
+  // package, so only `routes` and `api` mark Python routes.
+  const routeSegments = python ? ['routes', 'api'] : ['app', 'pages', 'routes', 'api'];
+  if (segments.some((segment) => routeSegments.includes(segment))) return 'routes';
   if (segments.includes('components') || segments.includes('ui')) return 'ui';
   if (segments.some((segment) => ['domain', 'entities', 'models'].includes(segment))) {
     return 'domain';
@@ -1444,6 +1497,7 @@ function buildInsights(
         })(),
       }))
       .sort((a, b) => a.name.localeCompare(b.name)),
+    importResolution: summarizeImportResolution(modules),
   };
 }
 

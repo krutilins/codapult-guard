@@ -5,6 +5,7 @@ const scripts = {
   smoke: 'guard-fixture-smoke.mjs',
   regression: 'guard-fixture-regression.mjs',
   adversarial: 'guard-fixture-adversarial.mjs',
+  python: 'guard-fixture-python.mjs',
   native: 'guard-fixture-native.mjs',
   pr: 'guard-pr-review.mjs',
 };
@@ -14,7 +15,9 @@ const all = process.argv.includes('--all');
 const strict = process.argv.includes('--strict') || process.env.GUARD_FIXTURE_STRICT === '1';
 const requested = argument ?? process.env.GUARD_FIXTURE_SUITES;
 const suites = (
-  all ? Object.keys(scripts) : (requested?.split(',') ?? ['smoke', 'regression', 'adversarial'])
+  all
+    ? Object.keys(scripts)
+    : (requested?.split(',') ?? ['smoke', 'regression', 'adversarial', 'python'])
 )
   .map((value) => value.trim())
   .filter(Boolean);

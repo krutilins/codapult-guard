@@ -41,6 +41,7 @@ import {
   writeBaseline,
   writeGuardConfig,
   writeProjectModel,
+  loadProjectModel,
   writeProjectState,
   validateGuardContracts,
   validateGuardBudgets,
@@ -68,6 +69,7 @@ import {
   classifyGuardOutcome,
   getGuardPolicyMutationPolicy,
 } from './guard.js';
+import { guardFindingsToSarif } from './output/sarif.js';
 
 const config: GuardConfig = {
   version: 1,
@@ -865,6 +867,304 @@ describe('scanGuard', () => {
     const cycleFinding = report.findings.find((finding) => finding.ruleId === 'architecture-cycle');
     expect(cycleFinding?.severity).toBe('warning');
     expect(cycleFinding?.message).toContain('Circular dependency detected');
+  });
+});
+
+describe('Python policy scanning', () => {
+  function forbiddenImportFindings(root: string, pattern: string): string[][] {
+    return scanGuard(root, {
+      version: 1,
+      rules: [
+        {
+          id: 'no-db',
+          description: 'Do not import the database layer.',
+          severity: 'error',
+          kind: 'forbidden-import',
+          patterns: [pattern],
+        },
+      ],
+    })
+      .findings.map((finding) => [finding.file, finding.importPath, String(finding.line)])
+      .sort((left, right) => (left.join('\0') < right.join('\0') ? -1 : 1));
+  }
+
+  it('matches every D7 fixture case', () => {
+    const root = createProject({
+      'pyproject.toml': '',
+      'app/__init__.py': '',
+      'app/db/__init__.py': '',
+      'app/db/models.py': '',
+      'app/dbutils.py': '',
+      'app/views.py': '"""Views."""\nfrom .db import Session\n',
+      'checks/exact.py': 'import app.db\n',
+      'checks/child.py': 'import app.db.models\n',
+      'checks/sibling.py': 'import app.dbutils\n',
+      'checks/derived.py': 'from app.db import models\n',
+      'web/debounce.ts': `import debounce from 'lodash.debounce';\nexport default debounce;\n`,
+      'web/fp.ts': `import fp from 'lodash/fp';\nexport default fp;\n`,
+    });
+
+    expect(forbiddenImportFindings(root, 'app.db')).toEqual([
+      ['app/views.py', '.db', '2'],
+      ['checks/child.py', 'app.db.models', '1'],
+      // The spelling as written and the derived submodule are separate references (D6).
+      ['checks/derived.py', 'app.db', '1'],
+      ['checks/derived.py', 'app.db.models', '1'],
+      ['checks/exact.py', 'app.db', '1'],
+    ]);
+    expect(forbiddenImportFindings(root, 'app.db*')).toEqual([
+      ['app/views.py', '.db', '2'],
+      ['checks/child.py', 'app.db.models', '1'],
+      ['checks/derived.py', 'app.db', '1'],
+      ['checks/derived.py', 'app.db.models', '1'],
+      ['checks/exact.py', 'app.db', '1'],
+      ['checks/sibling.py', 'app.dbutils', '1'],
+    ]);
+    expect(forbiddenImportFindings(root, 'app/db')).toEqual([
+      ['app/views.py', '.db', '2'],
+      ['checks/child.py', 'app.db.models', '1'],
+      ['checks/derived.py', 'app.db.models', '1'],
+      ['checks/exact.py', 'app.db', '1'],
+    ]);
+    // JS/TS keeps `/` as the only boundary, so `lodash` does not match `lodash.debounce`.
+    expect(forbiddenImportFindings(root, 'lodash')).toEqual([['web/fp.ts', 'lodash/fp', '1']]);
+  });
+
+  it('applies import-boundary contracts to Python modules with aliases, relative imports, and path scopes', () => {
+    const root = createProject({
+      'pyproject.toml': '',
+      'app/__init__.py': '',
+      'app/services.py': '',
+      'app/db/__init__.py': '',
+      'app/db/session.py': '',
+      'app/api/__init__.py': 'from app import services\n',
+      'app/api/views.py': '"""Views."""\nimport os\nfrom ..db import session as s\n',
+      'app/api/health.py': 'import app.services as svc\n',
+      'app/api/typed.py':
+        'from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from app import services\n',
+      'scripts/seed.py': 'from app.db import session\n',
+    });
+    const guardConfig: GuardConfig = {
+      version: 1,
+      rules: [],
+      contracts: [
+        {
+          id: 'api-no-db',
+          statement: 'API modules use services instead of the database.',
+          kind: 'import-boundary',
+          scope: ['app/api'],
+          mustNotImport: ['app.db'],
+        },
+        {
+          id: 'api-uses-services',
+          statement: 'API modules go through the service layer.',
+          kind: 'import-boundary',
+          scope: ['app/api'],
+          mustImport: ['app.services'],
+        },
+      ],
+    };
+
+    const report = scanGuard(root, guardConfig);
+
+    expect(
+      report.findings.map((finding) => ({
+        ruleId: finding.ruleId,
+        file: finding.file,
+        line: finding.line,
+        importPath: finding.importPath,
+        resolvedPath: finding.resolvedPath,
+        fingerprint: finding.fingerprint,
+      })),
+    ).toEqual([
+      {
+        ruleId: 'contract:api-no-db',
+        file: 'app/api/views.py',
+        line: 3,
+        importPath: '..db',
+        resolvedPath: undefined,
+        fingerprint: 'contract-import|api-no-db|app/api/views.py|..db|',
+      },
+      {
+        ruleId: 'contract:api-no-db',
+        file: 'app/api/views.py',
+        line: 3,
+        importPath: '..db.session',
+        resolvedPath: 'app/db/session.py',
+        fingerprint: 'contract-import|api-no-db|app/api/views.py|..db.session|app/db/session.py',
+      },
+      {
+        ruleId: 'contract:api-uses-services',
+        file: 'app/api/views.py',
+        line: 1,
+        importPath: 'contract',
+        resolvedPath: undefined,
+        fingerprint: 'contract-required-import|api-uses-services|app/api/views.py',
+      },
+    ]);
+    expect(report.notApplicable).toEqual([]);
+    expect(scanGuard(root, guardConfig).findings).toEqual(report.findings);
+  });
+
+  it('counts Python imports, including derived references, in import budgets', () => {
+    const root = createProject({
+      'pyproject.toml': '',
+      'app/__init__.py': '',
+      'app/db/__init__.py': '',
+      'app/db/session.py': '',
+      'app/heavy.py': 'import os\nimport sys\nfrom app.db import session, Session\n',
+      'app/light.py': 'import os\n',
+    });
+
+    const report = scanGuard(root, {
+      version: 1,
+      rules: [],
+      budgets: [
+        {
+          id: 'app-imports',
+          description: 'Modules keep a small import surface.',
+          metric: 'imports',
+          scope: ['app'],
+          limit: 3,
+          severity: 'warning',
+          reason: 'Wide import surfaces are hard to review.',
+        },
+      ],
+    });
+
+    expect(report.findings.map((finding) => [finding.ruleId, finding.file])).toEqual([
+      ['budget:app-imports', 'app/heavy.py'],
+    ]);
+  });
+
+  it('checks unchanged Python dependents when a Python dependency changes', () => {
+    const root = createProject({
+      'pyproject.toml': '',
+      'app/__init__.py': '',
+      'app/api/routes.py': 'from app.services import billing\nimport legacy_sdk\n',
+      'app/services/billing.py': 'from ..db import session\n',
+      'app/db/session.py': '',
+      'app/other.py': 'import legacy_sdk\n',
+    });
+
+    const report = scanGuard(
+      root,
+      {
+        version: 1,
+        rules: [],
+        contracts: [
+          {
+            id: 'no-legacy',
+            statement: 'Application code uses the new SDK.',
+            kind: 'import-boundary',
+            scope: ['app'],
+            mustNotImport: ['legacy_sdk'],
+          },
+        ],
+      },
+      { changedOnly: true, changedFiles: new Set(['app/db/session.py']) },
+    );
+
+    expect(report.findings.map((finding) => [finding.file, finding.line])).toEqual([
+      ['app/api/routes.py', 2],
+    ]);
+  });
+
+  it('round-trips a mixed-language model and writes Python findings as generic JSON and SARIF', () => {
+    const root = createProject({
+      'pyproject.toml': '',
+      'package.json': JSON.stringify({ name: 'web' }),
+      'app/__init__.py': '',
+      'app/db.py': '',
+      'app/views.py': '"""Views."""\nfrom app import db\n',
+      'web/page.ts': `import { db } from './db';\nexport const page = db;\n`,
+      'web/db.ts': 'export const db = {};\n',
+    });
+    const model = discoverProject(root);
+    writeProjectModel(root, model);
+
+    expect(loadProjectModel(root)).toEqual(model);
+
+    const report = scanGuard(root, {
+      version: 1,
+      rules: [
+        {
+          id: 'no-db',
+          description: 'Views use services instead of the database.',
+          severity: 'error',
+          kind: 'forbidden-import',
+          patterns: ['app.db', './db'],
+        },
+      ],
+    });
+    const json = JSON.parse(JSON.stringify(report)) as typeof report;
+    const sarif = guardFindingsToSarif(report.findings, [], report.notApplicable);
+
+    expect(
+      json.findings.map((finding) => [finding.file, finding.line, finding.importPath]),
+    ).toEqual([
+      ['app/views.py', 2, 'app.db'],
+      ['web/page.ts', 1, './db'],
+    ]);
+    expect(sarif.runs[0].invocations).toBeUndefined();
+    expect(sarif.runs[0].results[0]).toEqual({
+      ruleId: 'no-db',
+      level: 'error',
+      message: { text: 'Views use services instead of the database.' },
+      locations: [
+        {
+          physicalLocation: {
+            artifactLocation: { uri: 'app/views.py' },
+            region: { startLine: 2 },
+          },
+        },
+      ],
+    });
+  });
+
+  it('suppresses Python findings through the baseline and fingerprint waivers', () => {
+    const root = createProject({
+      'pyproject.toml': '',
+      'app/__init__.py': '',
+      'app/db.py': '',
+      'app/views.py': 'from . import db\n',
+    });
+    const guardConfig: GuardConfig = {
+      version: 1,
+      rules: [
+        {
+          id: 'no-db',
+          description: 'Views do not import the database.',
+          severity: 'error',
+          kind: 'forbidden-import',
+          patterns: ['app.db'],
+        },
+      ],
+    };
+    const [finding] = scanGuard(root, guardConfig).findings;
+    expect(finding).toMatchObject({ file: 'app/views.py', importPath: '.db', line: 1 });
+
+    const baselined = scanGuard(root, guardConfig, { baseline: new Set([finding.fingerprint]) });
+    expect(baselined.findings).toEqual([]);
+    expect(baselined.suppressed).toBe(1);
+
+    updateGuardWaivers(root, {
+      action: 'add',
+      waiverId: 'python-waiver',
+      waiver: {
+        id: 'python-waiver',
+        fingerprint: finding.fingerprint,
+        ruleId: finding.ruleId,
+        owner: 'platform-team',
+        reason: 'Database access moves to services next sprint',
+        createdAt: '2098-09-28T00:00:00.000Z',
+        expiresAt: '2098-10-28T00:00:00.000Z',
+      },
+      reason: 'Database access moves to services next sprint',
+    });
+    const waived = scanGuard(root, guardConfig, { now: '2098-09-28T00:00:00.000Z' });
+    expect(waived.findings).toEqual([]);
+    expect(waived.waived).toBe(1);
   });
 });
 

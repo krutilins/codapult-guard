@@ -9,8 +9,10 @@
 
 ## Architecture guardrails for AI coding agents
 
-`@codapult/guard` is a local-first, model-agnostic architecture guard for JavaScript and
-TypeScript projects.
+`@codapult/guard` is a local-first, model-agnostic architecture guard for JavaScript, TypeScript,
+and Python projects. Python support covers static imports: the import graph, import rules and
+contracts, import budgets, and impact analysis. See [Python projects](docs/guard.md#python-projects)
+for the supported subset.
 
 It learns what already exists, records the project’s architectural memory, and can protect future
 changes from introducing regressions covered by the project’s approved policy.
@@ -77,7 +79,8 @@ Existing tools remain essential, but they solve different problems:
 
 ## Install
 
-Requirements: Node.js `>=20.19` and a JavaScript or TypeScript project.
+Requirements: Node.js `>=20.19` and a JavaScript, TypeScript, or Python project. Python projects
+need no Python interpreter: Guard reads the source files and never runs them.
 
 ```bash
 pnpm add -D @codapult/guard
@@ -162,6 +165,7 @@ The model is framework-aware without being framework-dependent:
 | Area                    | Examples of discovered evidence                                                    |
 | ----------------------- | ---------------------------------------------------------------------------------- |
 | JavaScript / TypeScript | AST modules, declarations, calls, directives, aliases, re-exports, dynamic imports |
+| Python                  | Static imports, relative imports, `src/` layouts, namespace packages, monorepos    |
 | Next.js / React         | App Router routes, route methods, Server Actions, client/server boundaries         |
 | API boundaries          | Route handlers, API modules, entrypoints, impact paths                             |
 | Data                    | ORM packages, schemas, migrations, repositories, persistence boundaries            |

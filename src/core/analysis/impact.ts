@@ -1,5 +1,28 @@
 import type { GuardContract } from '../guard.js';
-import { buildModuleTargetGraph, type ProjectModel } from '../discovery/discovery.js';
+import {
+  buildModuleTargetGraph,
+  importResolutionStatus,
+  moduleImportSpecifiers,
+  summarizeImportResolution,
+  type ImportResolutionSummary,
+  type ProjectModel,
+} from '../discovery/discovery.js';
+
+/** Unresolved imports listed in a partial graph status; the count covers all of them. */
+const MAX_LISTED_UNRESOLVED_IMPORTS = 20;
+
+/**
+ * Whether the affected part of the graph is complete within the supported static subset. Dynamic
+ * imports with computed specifiers are never seen, so `complete` is not a runtime guarantee.
+ * External imports never make the status partial.
+ */
+export interface GuardImpactGraphStatus {
+  status: 'complete' | 'partial';
+  unresolvedImportCount: number;
+  unresolvedImports: { file: string; specifier: string }[];
+  /** Import resolution of the whole project per language, for context. */
+  projectImportResolution: ImportResolutionSummary[];
+}
 
 export interface GuardImpactAnalysis {
   requestedFiles: string[];
@@ -12,10 +35,33 @@ export interface GuardImpactAnalysis {
   relevantContracts: GuardContract[];
   dependencyEdges: ProjectModel['insights']['dependencyEdges'];
   layerEdges: ProjectModel['insights']['layerEdges'];
+  graph: GuardImpactGraphStatus;
 }
 
 function matchesScope(path: string, scope: string): boolean {
   return path === scope || path.startsWith(`${scope.replace(/\\/g, '/')}/`);
+}
+
+function graphStatus(model: ProjectModel, affected: Set<string>): GuardImpactGraphStatus {
+  const unresolved = model.modules
+    .filter((module) => affected.has(module.path))
+    .flatMap((module) =>
+      moduleImportSpecifiers(module)
+        .filter((specifier) => importResolutionStatus(module, specifier) === 'unresolved')
+        .map((specifier) => ({ file: module.path, specifier })),
+    )
+    .sort((left, right) =>
+      left.file !== right.file
+        ? left.file.localeCompare(right.file)
+        : left.specifier.localeCompare(right.specifier),
+    );
+  return {
+    status: unresolved.length > 0 ? 'partial' : 'complete',
+    unresolvedImportCount: unresolved.length,
+    unresolvedImports: unresolved.slice(0, MAX_LISTED_UNRESOLVED_IMPORTS),
+    projectImportResolution:
+      model.insights.importResolution ?? summarizeImportResolution(model.modules),
+  };
 }
 
 function walk(graph: Map<string, string[]>, starts: Iterable<string>): Set<string> {
@@ -99,5 +145,6 @@ export function analyzeProjectImpact(
     relevantContracts,
     dependencyEdges,
     layerEdges,
+    graph: graphStatus(model, affected),
   };
 }

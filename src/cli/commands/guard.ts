@@ -57,7 +57,8 @@ import {
 } from '../../adapters/agents/agent-integration.js';
 import { dim, fail, heading, info, success, warn } from '../ui.js';
 import { guardFindingsToSarif, type GuardSarifNotice } from '../../core/output/sarif.js';
-import { analyzeProjectImpact } from '../../core/analysis/impact.js';
+import { analyzeProjectImpact, type GuardImpactGraphStatus } from '../../core/analysis/impact.js';
+import type { ImportResolutionSummary } from '../../core/discovery/discovery.js';
 import { listGuardRuns, summarizeGuardRuns } from '../../core/history/runs.js';
 import { auditGuardGovernance, type GuardGovernanceAudit } from '../../core/audit/governance.js';
 
@@ -313,6 +314,30 @@ export function guardInstallAgentCommand(
   process.exitCode = 0;
 }
 
+function renderImportResolution(summaries: ImportResolutionSummary[]): void {
+  for (const summary of summaries) {
+    const diagnostics =
+      summary.modulesWithParseDiagnostics > 0
+        ? `, ${summary.modulesWithParseDiagnostics} module(s) with parse diagnostics`
+        : '';
+    const line = `Imports (${summary.language}): ${summary.modules} module(s), ${summary.imports} import(s), ${summary.resolved} resolved, ${summary.unresolved} unresolved, ${summary.external} external${diagnostics}`;
+    if (summary.unresolved > 0 || summary.modulesWithParseDiagnostics > 0) warn(line);
+    else info(line);
+  }
+}
+
+function renderGraphStatus(graph: GuardImpactGraphStatus): void {
+  if (graph.status === 'complete') {
+    info('Graph: complete within the supported static subset');
+  } else {
+    warn(`Graph: partial, ${graph.unresolvedImportCount} unresolved import(s) in affected modules`);
+    for (const entry of graph.unresolvedImports) dim(`  ${entry.file}: ${entry.specifier}`);
+    const hidden = graph.unresolvedImportCount - graph.unresolvedImports.length;
+    if (hidden > 0) dim(`  and ${hidden} more`);
+  }
+  renderImportResolution(graph.projectImportResolution);
+}
+
 export function guardDoctorCommand(
   options: GuardOutputOptions & { fixCache?: boolean | undefined } = {},
 ): void {
@@ -329,6 +354,7 @@ export function guardDoctorCommand(
       else if (item.status === 'warning') warn(`${item.path}: ${item.message}`);
       else fail(`${item.path}: invalid`);
     }
+    renderImportResolution(report.importResolution ?? []);
     if (report.recommendation) dim(report.recommendation);
     else success('Guard state is healthy.');
   }
@@ -415,6 +441,7 @@ export function guardImpactCommand(files: string[], options: GuardOutputOptions 
   info(
     `Relevant contracts: ${result.relevantContracts.map((contract) => contract.id).join(', ') || 'none'}`,
   );
+  renderGraphStatus(result.graph);
 }
 
 export function guardHistoryDiffCommand(

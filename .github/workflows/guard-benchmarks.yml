@@ -24,3 +24,9 @@ jobs:
         env:
           GUARD_BENCH_FILES: 1000
           GUARD_BENCH_RUNS: 3
+      - name: Run large Python benchmark
+        run: node scripts/guard-benchmark.mjs
+        env:
+          GUARD_BENCH_LANGUAGE: python
+          GUARD_BENCH_FILES: 1000
+          GUARD_BENCH_RUNS: 3

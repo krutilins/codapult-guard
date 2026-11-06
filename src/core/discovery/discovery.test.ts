@@ -26,6 +26,7 @@ import {
   type ModuleRecord,
   type ProjectModel,
 } from './discovery.js';
+import { analyzeProjectImpact } from '../analysis/impact.js';
 
 const roots: string[] = [];
 
@@ -579,7 +580,7 @@ export const key = process.env['API_KEY'];
     writeFileSync(join(root, 'package.json'), '{\n  "name": "cache",\n  "scripts": {}\n}\n');
     discoverProject(root);
     const refreshedCache = JSON.parse(readFileSync(cachePath, 'utf8')) as { version?: unknown };
-    expect(refreshedCache.version).toBe(7);
+    expect(refreshedCache.version).toBe(8);
   });
 
   it('does not persist discovery cache through a symlinked Guard directory', () => {
@@ -1156,5 +1157,247 @@ describe('Python import resolution in discovery', () => {
     expect(main?.resolvedImportMap).toEqual({ shared: 'shared/__init__.py' });
     expect(main?.unresolvedImports).toEqual([]);
     expect(importResolutionStatus(main!, 'billing.service')).toBe('external');
+  });
+});
+
+describe('Python graph integration and completeness', () => {
+  const chain: Record<string, string> = {
+    'pyproject.toml': '',
+    'app/__init__.py': '',
+    'app/api/__init__.py': '',
+    'app/api/routes.py': 'from app.services import billing\nimport fastapi\n',
+    'app/services/__init__.py': '',
+    'app/services/billing.py': 'from ..db import session\n',
+    'app/db/__init__.py': '',
+    'app/db/session.py': 'import sqlalchemy\n',
+    'tests/test_billing.py': 'from app.services import billing\n',
+    'web/page.ts': "import { x } from './util';\nexport const page = x;\n",
+    'web/util.ts': 'export const x = 1;\n',
+  };
+
+  function project(files: Record<string, string>): string {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-impact-'));
+    roots.push(root);
+    writeTree(root, files);
+    return root;
+  }
+
+  it('carries a Python import chain through layers, impact, and a complete graph status', () => {
+    const model = discoverProject(project(chain), { persistCache: false });
+
+    expect(model.insights.layers).toMatchObject({
+      routes: ['app/api/__init__.py', 'app/api/routes.py'],
+      application: ['app/services/__init__.py', 'app/services/billing.py'],
+      infrastructure: ['app/db/__init__.py', 'app/db/session.py'],
+      tests: ['tests/test_billing.py'],
+    });
+    expect(model.insights.layerEdges).toEqual([
+      { from: 'application', to: 'infrastructure', count: 1 },
+      { from: 'other', to: 'other', count: 1 },
+      { from: 'routes', to: 'application', count: 1 },
+      { from: 'tests', to: 'application', count: 1 },
+    ]);
+
+    const impact = analyzeProjectImpact(model, ['app/db/session.py']);
+
+    expect(impact.dependents).toEqual([
+      'app/api/routes.py',
+      'app/services/billing.py',
+      'tests/test_billing.py',
+    ]);
+    expect(impact.dependencyEdges).toEqual([
+      { from: 'app/api/routes.py', to: 'app/services/billing.py' },
+      { from: 'app/services/billing.py', to: 'app/db/session.py' },
+      { from: 'tests/test_billing.py', to: 'app/services/billing.py' },
+    ]);
+    // External imports such as `fastapi` and `sqlalchemy` never make the graph partial.
+    expect(impact.graph).toEqual({
+      status: 'complete',
+      unresolvedImportCount: 0,
+      unresolvedImports: [],
+      projectImportResolution: [
+        {
+          language: 'js-ts',
+          modules: 2,
+          imports: 1,
+          resolved: 1,
+          unresolved: 0,
+          external: 0,
+          modulesWithParseDiagnostics: 0,
+        },
+        {
+          language: 'python',
+          modules: 8,
+          imports: 8,
+          resolved: 6,
+          unresolved: 0,
+          external: 2,
+          modulesWithParseDiagnostics: 0,
+        },
+      ],
+    });
+    expect(model.insights.importResolution).toEqual(impact.graph.projectImportResolution);
+  });
+
+  it('reports a partial graph when an unresolved relative import breaks the chain', () => {
+    const model = discoverProject(
+      project({ ...chain, 'app/services/billing.py': 'from ..database import session\n' }),
+      { persistCache: false },
+    );
+
+    // The broken edge hides the route from the impact of the database module.
+    expect(analyzeProjectImpact(model, ['app/db/session.py'])).toMatchObject({
+      dependents: [],
+      graph: { status: 'complete', unresolvedImportCount: 0 },
+    });
+    expect(analyzeProjectImpact(model, ['app/api/routes.py']).graph).toMatchObject({
+      status: 'partial',
+      unresolvedImportCount: 1,
+      unresolvedImports: [{ file: 'app/services/billing.py', specifier: '..database' }],
+    });
+    expect(model.insights.importResolution?.find((s) => s.language === 'python')).toMatchObject({
+      unresolved: 1,
+    });
+  });
+
+  it('counts modules with parse diagnostics in the summary', () => {
+    const model = discoverProject(
+      project({ 'main.py': 'import os\ndef broken(:\n    pass\nimport json\n' }),
+      { persistCache: false },
+    );
+
+    expect(model.insights.importResolution).toEqual([
+      {
+        language: 'python',
+        modules: 1,
+        imports: 2,
+        resolved: 0,
+        unresolved: 0,
+        external: 2,
+        modulesWithParseDiagnostics: 1,
+      },
+    ]);
+  });
+
+  it('lists only the first unresolved imports and counts all of them', () => {
+    const imports = Array.from({ length: 25 }, (_, index) => `from .gone${index} import x`);
+    const model = discoverProject(project({ 'pkg/main.py': `${imports.join('\n')}\n` }), {
+      persistCache: false,
+    });
+
+    const { graph } = analyzeProjectImpact(model, ['pkg/main.py']);
+
+    expect(graph.status).toBe('partial');
+    expect(graph.unresolvedImportCount).toBe(25);
+    expect(graph.unresolvedImports).toHaveLength(20);
+  });
+
+  it('rejects a cache record from an older version even when the signature matches', async () => {
+    const root = realpathSync(project(chain));
+    mkdirSync(join(root, '.codapult/guard'), { recursive: true });
+    const expected = (await discoverInFreshProcess(root)).insights.dependencyEdges;
+    const cachePath = join(root, '.codapult/guard/cache.json');
+    const cache = JSON.parse(readFileSync(cachePath, 'utf8')) as {
+      version: number;
+      model: ProjectModel;
+    };
+    const tampered = { ...cache.model, insights: { ...cache.model.insights, dependencyEdges: [] } };
+
+    // The current version with a matching signature is trusted as is, which proves the signature.
+    writeFileSync(cachePath, JSON.stringify({ ...cache, model: tampered }));
+    expect((await discoverInFreshProcess(root)).insights.dependencyEdges).toEqual([]);
+
+    writeFileSync(cachePath, JSON.stringify({ ...cache, version: 7, model: tampered }));
+    expect((await discoverInFreshProcess(root)).insights.dependencyEdges).toEqual(expected);
+  });
+});
+
+describe('Python analyzer properties', () => {
+  it('never resolves a Python import to a JS/TS or other non-Python file', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-isolation-'));
+    roots.push(root);
+    writeTree(root, {
+      'pyproject.toml': '',
+      'app/__init__.py': '',
+      'app/main.py':
+        'import web.util\nfrom . import helper\nfrom .settings import value\nimport app.data\n',
+      'app/helper.ts': 'export const helper = 1;\n',
+      'app/settings.js': 'module.exports = {};\n',
+      'app/data.json': '{}\n',
+      'web/util.ts': 'export const util = 1;\n',
+      'web/util.tsx': 'export const view = 1;\n',
+    });
+
+    const model = discoverProject(root, { persistCache: false });
+    const main = model.modules.find((module) => module.path === 'app/main.py')!;
+
+    expect(main.resolvedImportMap).toEqual({ '.': 'app/__init__.py' });
+    expect(main.resolvedImports).toEqual(['app/__init__.py']);
+    expect(main.unresolvedImports).toEqual(['.settings', 'app.data']);
+    expect(model.insights.dependencyEdges).toEqual([
+      { from: 'app/main.py', to: 'app/__init__.py' },
+    ]);
+  });
+
+  it('matches a clean discovery after each Python resolution edit with a persisted cache', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'guard-python-cache-')));
+    roots.push(root);
+    mkdirSync(join(root, '.codapult/guard'), { recursive: true });
+    writeTree(root, {
+      'pyproject.toml': '',
+      'app/__init__.py': '',
+      'app/services.py': '',
+      'app/views.py': 'from app import services\nfrom .db import session\n',
+      'app/db/__init__.py': '',
+      'app/db/session.py': '',
+      'tools/cli.py': 'from app import services\nimport shared.util\n',
+      'tools/shared/__init__.py': '',
+      'tools/shared/util.py': '',
+    });
+    const view = (model: ProjectModel): unknown => ({
+      ...(resolutionView(model) as object),
+      canonical: model.modules.map((module) => [module.path, module.canonicalImports]),
+    });
+    const cold = async (): Promise<unknown> => {
+      clearDiscoveryCache(root);
+      const model = await discoverInFreshProcess(root);
+      clearDiscoveryCache(root);
+      return view(model);
+    };
+    const edits: [string, () => void][] = [
+      [
+        'module replaced by a package',
+        () => {
+          rmSync(join(root, 'app/services.py'));
+          writeTree(root, { 'app/services/__init__.py': '', 'app/services/billing.py': '' });
+        },
+      ],
+      [
+        'project marker adds a resolution root',
+        () => writeTree(root, { 'tools/pyproject.toml': '' }),
+      ],
+      ['package __init__ removed', () => rmSync(join(root, 'app/db/__init__.py'))],
+      [
+        'module added under the new root',
+        () => writeTree(root, { 'tools/app/__init__.py': '', 'tools/app/services.py': '' }),
+      ],
+    ];
+
+    await discoverInFreshProcess(root);
+    for (const [name, edit] of edits) {
+      edit();
+      const inProcess = discoverProjectWithMetrics(root, { persistCache: true });
+      const fresh = await discoverInFreshProcess(root);
+      const expected = await cold();
+      expect(view(inProcess.model), name).toEqual(expected);
+      expect(view(fresh), name).toEqual(expected);
+      expect(inProcess.metrics.reusedModules, name).toBeGreaterThan(0);
+      await discoverInFreshProcess(root);
+    }
+    const cli = discoverProject(root).modules.find((module) => module.path === 'tools/cli.py');
+    expect(cli?.resolvedImportMap).toEqual({
+      'app.services': 'tools/app/services.py',
+      'shared.util': 'tools/shared/util.py',
+    });
   });
 });

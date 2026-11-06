@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { summarizeImportResolution, type ImportResolutionSummary } from '../discovery/discovery.js';
 import {
   GUARD_AGENT_FILE,
   GUARD_BASELINE_META_FILE,
@@ -28,6 +29,8 @@ export interface GuardDoctorReport {
   status: 'ok' | 'warning' | 'fail';
   initialized: boolean;
   items: GuardDoctorItem[];
+  /** Import resolution per language from the saved project model; informational only. */
+  importResolution?: ImportResolutionSummary[] | undefined;
   recommendation?: string | undefined;
 }
 
@@ -142,6 +145,10 @@ export function diagnoseGuard(root: string): GuardDoctorReport {
       message: 'Baseline metadata is present and readable.',
     });
   }
+  const model = loadProjectModel(root);
+  const importResolution = model
+    ? (model.insights.importResolution ?? summarizeImportResolution(model.modules))
+    : undefined;
   const missing = items.filter((item) => item.status === 'missing');
   const invalid = items.filter((item) => item.status === 'invalid');
   const warnings = items.filter((item) => item.status === 'warning');
@@ -154,6 +161,7 @@ export function diagnoseGuard(root: string): GuardDoctorReport {
           : 'ok',
     initialized,
     items,
+    ...(importResolution ? { importResolution } : {}),
     ...(invalid.length > 0
       ? {
           recommendation: 'Run `codapult-guard init --force` after reviewing the current baseline.',

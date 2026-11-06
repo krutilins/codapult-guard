@@ -337,3 +337,76 @@ describe('resolvePythonImports', () => {
     });
   });
 });
+
+describe('Python resolution properties', () => {
+  // Seeded so a failure reproduces.
+  function shuffled<T>(items: readonly T[], seed: number): T[] {
+    const result = [...items];
+    let state = seed;
+    for (let index = result.length - 1; index > 0; index -= 1) {
+      state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
+      const other = state % (index + 1);
+      [result[index], result[other]] = [result[other], result[index]];
+    }
+    return result;
+  }
+
+  const sources: Record<string, string> = {
+    'pyproject.toml': '',
+    'main.py': 'import common.helpers\nimport company.users.service\nfrom app import api\n',
+    'app/__init__.py': '',
+    'app/api.py': 'from .db import models\nfrom ..outside import x\n',
+    'app/db/__init__.py': '',
+    'app/db/models.py': '',
+    'services/api/pyproject.toml': '',
+    'services/api/src/app/__init__.py': '',
+    'services/api/src/app/api.py': 'from app import api\nimport shared.config\n',
+    'services/api/src/shared/config.py': '',
+    'libs/a/pyproject.toml': '',
+    'libs/a/common/helpers.py': '',
+    'libs/b/pyproject.toml': '',
+    'libs/b/common/helpers.py': '',
+    'packages/users/pyproject.toml': '',
+    'packages/users/src/company/users/service.py': 'from company.billing import service\n',
+    'packages/billing/pyproject.toml': '',
+    'packages/billing/src/company/billing/service.py': 'from company.users import service\n',
+  };
+  const modules = Object.keys(sources).filter((path) => path.endsWith('.py'));
+  const facts = Object.fromEntries(
+    modules.map((path) => [path, parsePythonSource(sources[path]).imports]),
+  );
+
+  function resolveAll(paths: readonly string[], projectRoots: readonly string[]): unknown {
+    const index = pythonResolutionIndex(paths, projectRoots);
+    const results = Object.fromEntries(
+      shuffled(modules, paths.length + projectRoots.length).map((path) => [
+        path,
+        resolvePythonImports(path, facts[path], index),
+      ]),
+    );
+    return Object.fromEntries(
+      Object.keys(results)
+        .sort()
+        .map((path) => [path, results[path]]),
+    );
+  }
+
+  it('returns identical results for every order of files and project roots', () => {
+    const paths = Object.keys(sources);
+    const roots = pythonProjectRoots(paths);
+    const expected = resolveAll(paths, roots);
+
+    for (let seed = 1; seed <= 12; seed += 1) {
+      expect(resolveAll(shuffled(paths, seed), shuffled(roots, seed * 7)), `seed ${seed}`).toEqual(
+        expected,
+      );
+    }
+    expect(
+      (expected as Record<string, PythonResolution>)['services/api/src/app/api.py']
+        .resolvedImportMap,
+    ).toEqual({
+      'app.api': 'services/api/src/app/api.py',
+      'shared.config': 'services/api/src/shared/config.py',
+    });
+  });
+});

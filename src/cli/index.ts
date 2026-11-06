@@ -53,7 +53,9 @@ interface BaselineListOptions {
 
 const program = new Command()
   .name(config.commandName)
-  .description('Local-first architecture guardrails for JavaScript and TypeScript projects')
+  .description(
+    'Local-first architecture guardrails for JavaScript, TypeScript, and Python projects',
+  )
   .configureHelp({
     styleTitle: (str) => pc.bold(pc.cyan(str)),
     styleCommandText: (str) => pc.yellow(str),

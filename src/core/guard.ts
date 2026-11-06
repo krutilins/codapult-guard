@@ -18,6 +18,7 @@ import {
   collectedFacts,
   type ModuleFact,
   type ProjectModel,
+  sourceLanguage,
 } from './discovery/discovery.js';
 import {
   clearDiscoveryCache,
@@ -2022,6 +2023,13 @@ function patternMatches(importPath: string, pattern: string): boolean {
     : importPath === pattern || importPath.startsWith(`${pattern}/`);
 }
 
+/** Python module names also treat `.` as a segment boundary (D7). A trailing `*` stays a raw prefix. */
+function pythonNameMatches(name: string, pattern: string): boolean {
+  return (
+    patternMatches(name, pattern) || (!pattern.endsWith('*') && name.startsWith(`${pattern}.`))
+  );
+}
+
 function ruleAppliesToFile(rule: GuardRule, file: string): boolean {
   return (
     !rule.files || rule.files.some((prefix) => file === prefix || file.startsWith(`${prefix}/`))
@@ -2044,17 +2052,37 @@ function contractAppliesToFile(contract: GuardContract, file: string): boolean {
 interface ModuleImportReference {
   source: string;
   resolved?: string | undefined;
+  /** Absolute dotted name of a relative Python import, stored by discovery (D9). */
+  canonical?: string | undefined;
+  python: boolean;
   line: number;
 }
 
 function moduleImportReferences(module: ProjectModel['modules'][number]): ModuleImportReference[] {
   const sources = [...new Set([...module.imports, ...module.exports, ...module.dynamicImports])];
+  const python = sourceLanguage(module.path) === 'python';
   return sources.map((source) => ({
     source,
     resolved: module.resolvedImportMap?.[source],
+    canonical: module.canonicalImports?.[source],
+    python,
     // Models persisted before import lines were recorded fall back to the file start.
     line: module.importLines?.[source] ?? 1,
   }));
+}
+
+/**
+ * Whether an import pattern matches a reference. JS/TS references match by spelling or resolved
+ * path. Python references also match by their canonical dotted name, and dotted names use `.` as
+ * a segment boundary (D7). Resolved paths keep path semantics in every language.
+ */
+function referenceMatches(reference: ModuleImportReference, pattern: string): boolean {
+  if (reference.resolved !== undefined && patternMatches(reference.resolved, pattern)) return true;
+  if (!reference.python) return patternMatches(reference.source, pattern);
+  return (
+    pythonNameMatches(reference.source, pattern) ||
+    (reference.canonical !== undefined && pythonNameMatches(reference.canonical, pattern))
+  );
 }
 
 function packageSelectorMatches(value: string | undefined, selector: string): boolean {
@@ -2155,14 +2183,7 @@ function scanFile(
   for (const reference of moduleImportReferences(module)) {
     for (const rule of applicableRules) {
       if (rule.kind === 'client-forbidden-import' && !isClient) continue;
-      if (
-        !rule.patterns.some(
-          (pattern) =>
-            patternMatches(reference.source, pattern) ||
-            (reference.resolved !== undefined && patternMatches(reference.resolved, pattern)),
-        )
-      )
-        continue;
+      if (!rule.patterns.some((pattern) => referenceMatches(reference, pattern))) continue;
       findings.push({
         ruleId: rule.id,
         severity: rule.severity,
@@ -2199,13 +2220,7 @@ function scanContracts(
       }
       if (contract.kind === 'import-boundary') {
         for (const reference of moduleImportReferences(module)) {
-          if (
-            contract.mustNotImport?.some(
-              (pattern) =>
-                patternMatches(reference.source, pattern) ||
-                (reference.resolved !== undefined && patternMatches(reference.resolved, pattern)),
-            )
-          ) {
+          if (contract.mustNotImport?.some((pattern) => referenceMatches(reference, pattern))) {
             findings.push({
               ruleId: `contract:${contract.id}`,
               severity,
@@ -2222,11 +2237,7 @@ function scanContracts(
           contract.mustImport !== undefined &&
           contract.mustImport.length > 0 &&
           !moduleImportReferences(module).some((reference) =>
-            contract.mustImport?.some(
-              (pattern) =>
-                patternMatches(reference.source, pattern) ||
-                (reference.resolved !== undefined && patternMatches(reference.resolved, pattern)),
-            ),
+            contract.mustImport?.some((pattern) => referenceMatches(reference, pattern)),
           )
         ) {
           findings.push({

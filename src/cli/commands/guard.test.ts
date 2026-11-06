@@ -122,6 +122,52 @@ describe('guard commands', () => {
     process.exitCode = undefined;
   });
 
+  it('shows the graph status and import summary in impact output', async () => {
+    const { guardImpactCommand } = await import('./guard.js');
+    const { discoverProject } = await import('../../core/guard.js');
+    const module = (
+      path: string,
+      imports: string[],
+      extra: Record<string, unknown>,
+    ): Record<string, unknown> => ({
+      path,
+      contentHash: path,
+      imports,
+      importedSymbols: [],
+      exports: [],
+      calls: [],
+      resolvedImports: [],
+      dynamicImports: [],
+      declarations: { classes: 0, functions: 0, interfaces: 0, types: 0, variables: 0 },
+      directives: [],
+      ...extra,
+    });
+    vi.mocked(discoverProject).mockReturnValueOnce({
+      modules: [
+        module('app/api.py', ['app.services'], {
+          resolvedImports: ['app/services.py'],
+          resolvedImportMap: { 'app.services': 'app/services.py' },
+        }),
+        module('app/services.py', ['.database'], { unresolvedImports: ['.database'] }),
+      ],
+      capabilities: {},
+      insights: { impactPaths: [], dependencyEdges: [], layers: {}, layerEdges: [] },
+    } as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    guardImpactCommand(['app/services.py']);
+    const text = [...log.mock.calls, ...warning.mock.calls].flat().join('\n');
+    log.mockRestore();
+    warning.mockRestore();
+
+    expect(text).toContain('Graph: partial, 1 unresolved import(s) in affected modules');
+    expect(text).toContain('app/services.py: .database');
+    expect(text).toContain(
+      'Imports (python): 2 module(s), 2 import(s), 1 resolved, 1 unresolved, 0 external',
+    );
+  });
+
   it('analyzes the project and refreshes the discovery snapshot', async () => {
     const { guardAnalyzeCommand } = await import('./guard.js');
     expect(() => guardAnalyzeCommand()).not.toThrow();

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **python:** discover and analyze Python projects without a Python interpreter. Guard parses `.py` files with `@lezer/python`, resolves static imports (relative imports, `src/` layouts, nested projects, and namespace packages) into the shared graph, and applies `forbidden-import` rules, `import-boundary` contracts, and budgets to Python modules. See `docs/guard.md#python-projects`.
+* **report:** checks that need facts a module lacks, such as `required-call` on a Python module, are listed under `notApplicable` in JSON and MCP output, printed by `check` and `audit`, and written to SARIF as `invocations[0].toolExecutionNotifications`. They never change the exit code.
+* **model:** modules record `unresolvedImports`, and `insights.importResolution` summarizes resolved, unresolved, and external imports per language.
+* **impact:** impact results include `graph.status` (`complete` or `partial`) with the unresolved imports of affected modules. `doctor` prints the import summary.
+
+### Behavior changes
+
+* **root:** Guard now also stops at the nearest directory with `pyproject.toml`, `setup.cfg`, or `setup.py` when it looks for the project root. Running Guard inside a nested Python project uses that project as the root.
+* **rules:** rules now scan `.mjs`, `.cjs`, `.mts`, and `.cts` files, and no longer scan files under `__tests__/`, consistent with `.test.` and `.spec.` files. `scannedFiles` counts source modules only, so the number drops on most projects.
+* **contracts:** contract findings and rule findings for `require()` report the import line instead of line 1. Fingerprints do not include lines, so baselines and waivers keep matching.
+* **resolution:** directory requires such as `require('..')` and `require('../')` now resolve to the directory index, which adds graph edges. Findings on these imports gain a `resolvedPath`, which changes their fingerprints, so baselined or waived findings on directory requires appear once more after upgrading.
+* **cache:** module reuse now depends on a fingerprint of resolution inputs (TypeScript and JavaScript configs, `package.json` files, lockfiles, and the list of source files) instead of `git diff`, so committed config changes and projects without Git re-resolve correctly. The discovery cache version changes, so the first run after upgrading is a cold discovery.
+
 ## [0.9.0](https://github.com/codapult/codapult-guard/compare/v0.8.1...v0.9.0) (2026-10-15)
 
 ### Features

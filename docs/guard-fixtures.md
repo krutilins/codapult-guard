@@ -46,12 +46,28 @@ package exports, and TypeScript project references:
 pnpm test:guard:fixtures:adversarial
 ```
 
+Local Python fixtures cover a flat layout with package re-exports and relative imports, a `src/`
+layout, a monorepo with a namespace package split across project roots, a mixed TypeScript and
+Python repository, and edge cases: unresolved and ambiguous imports, malformed syntax, a local
+module that shadows the standard library, a file name that is not an identifier, and ignored
+directories such as `.venv`. The Python gate initializes each fixture through the CLI, applies
+every rule and contract kind, injects a forbidden Python import and removes it again, and checks
+impact, SARIF, and `doctor` output. It needs no Python interpreter and installs nothing:
+
+```bash
+pnpm test:guard:fixtures:python
+```
+
+The unit suite checks the exact models of the same fixtures in `src/core/python-fixtures.test.ts`.
+`GUARD_BENCH_LANGUAGE=python pnpm test:guard:benchmark` measures discovery on a chain of 1,000
+Python packages.
+
 For a repeatable local suite, use the suite runner. It builds Guard once and then runs the
 existing scenario scripts without duplicating their checks:
 
 ```bash
 pnpm test:guard:fixtures:all
-GUARD_FIXTURE_SUITES=smoke,regression,adversarial pnpm test:guard:fixtures:all
+GUARD_FIXTURE_SUITES=smoke,regression,adversarial,python pnpm test:guard:fixtures:all
 ```
 
 `native` is opt-in because it installs upstream dependencies. `pr` is opt-in because it clones a
