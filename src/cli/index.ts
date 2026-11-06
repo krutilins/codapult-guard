@@ -92,6 +92,11 @@ guard
   .option('--changed')
   .option('--policy-base <ref>', 'read policy artifacts from this Git ref')
   .option('--fail-on-policy-change', 'fail when the working-tree policy differs from the base ref')
+  .option(
+    '--fail-on-protected-changes',
+    'fail when protected verification paths change relative to base',
+  )
+  .option('--attestation-out <file>', 'write a passing verification as an in-toto statement')
   .option('--json')
   .action(guardVerifyCommand);
 guard

@@ -1,10 +1,10 @@
 {
   "name": "@codapult/guard",
-  "version": "0.9.0",
+  "version": "0.13.3",
   "mcpName": "io.github.codapult/guard",
   "description": "Local-first architecture guardrails for JavaScript, TypeScript, and Python projects, with first-class support for Next.js SaaS and AI-assisted development",
   "license": "MIT",
-  "packageManager": "pnpm@12.4.2+sha512.08adc6613180275c7c9edada39dcf08c9c61ad4e7eaf330a4f3461f102b0f907423454d117f98e72d47fef0616070644d7bffc973a6a57f5090a6d7c368b07c9",
+  "packageManager": "pnpm@12.16.1+sha512.091d1dee7927575661b25dab3c2ae31cafc1c54d6b71ed6a6600cf0c1cb10434a447eae14015f1b23e2e6bedeed79df94a932e2164d2832280dce3fb32f656d1",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -44,7 +44,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "docs"
   ],
   "scripts": {
     "clean": "node scripts/clean-dist.mjs",
@@ -61,6 +62,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:guard:coverage": "vitest run src/core src/adapters/project-checks.test.ts --coverage --coverage.include='src/core/**/*.ts' --coverage.include='src/adapters/project-checks.ts'",
+    "test:guard:prepare-fixtures": "node scripts/prepare-fixture-projects.mjs",
     "test:guard:fixtures": "pnpm build && node scripts/guard-fixture-smoke.mjs",
     "test:guard:fixtures:regression": "pnpm build && node scripts/guard-fixture-regression.mjs",
     "test:guard:fixtures:native": "pnpm build && node scripts/guard-fixture-native.mjs",
@@ -101,13 +103,14 @@
   },
   "dependencies": {
     "@lezer/python": "^1.1.19",
-    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "commander": "^15.0.0",
     "picocolors": "^1.1.1",
     "semver": "^7.8.5",
     "ts-morph": "^28.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "zod": "^4.6.5"
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@js-toolkit/config-utils": "^1.0.1",
@@ -115,15 +118,15 @@
     "@js-toolkit/prettier-config": "^1.0.1",
     "@js-toolkit/tsconfig": "^1.0.1",
     "@release-it/conventional-changelog": "^12.0.2",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "@vitest/coverage-v8": "^5.0.3",
-    "eslint": "^10.12.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.6",
+    "eslint-plugin-prettier": "^5.5.7",
     "prettier": "^3.9.10",
-    "release-it": "^21.1.1",
-    "typescript-eslint": "^8.71.1",
-    "vitest": "^5.0.3"
+    "release-it": "^21.1.2",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
   }
 }

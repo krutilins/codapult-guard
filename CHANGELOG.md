@@ -17,6 +17,76 @@
 * **resolution:** directory requires such as `require('..')` and `require('../')` now resolve to the directory index, which adds graph edges. Findings on these imports gain a `resolvedPath`, which changes their fingerprints, so baselined or waived findings on directory requires appear once more after upgrading.
 * **cache:** module reuse now depends on a fingerprint of resolution inputs (TypeScript and JavaScript configs, `package.json` files, lockfiles, and the list of source files) instead of `git diff`, so committed config changes and projects without Git re-resolve correctly. The discovery cache version changes, so the first run after upgrading is a cold discovery.
 
+## [0.13.3](https://github.com/codapult/codapult-guard/compare/v0.13.2...v0.13.3) (2026-11-02)
+
+### Bug Fixes
+
+* add terminalSafeJson function for safe JSON output ([6419c21](https://github.com/codapult/codapult-guard/commit/6419c216e77ec4d24cc4ca7b932362151fb4e907))
+
+## [0.13.2](https://github.com/codapult/codapult-guard/compare/v0.13.1...v0.13.2) (2026-11-01)
+
+### Bug Fixes
+
+* **security:** harden guard inputs and workflows ([58cd786](https://github.com/codapult/codapult-guard/commit/58cd78614f2078ec556fb25fad2270e33e9911f3))
+
+## [0.13.1](https://github.com/codapult/codapult-guard/compare/v0.13.0...v0.13.1) (2026-11-01)
+
+### Bug Fixes
+
+* **ci:** update Guard artifact action pin ([0dc5fd3](https://github.com/codapult/codapult-guard/commit/0dc5fd3a536d3990492c39bb54b803043c322ea6))
+* enhance descriptions and input schemas for Guard tools ([df001ce](https://github.com/codapult/codapult-guard/commit/df001ce193488d559a1a3d829fee03186120b538))
+
+## [0.13.0](https://github.com/codapult/codapult-guard/compare/v0.12.0...v0.13.0) (2026-11-01)
+
+### Features
+
+* **ci:** support trusted merge queues ([651d389](https://github.com/codapult/codapult-guard/commit/651d389836e29fb3660d542eaa0b3732cedf7ce1))
+
+### Bug Fixes
+
+* **ci:** trust base-branch PR verifier ([0f728f4](https://github.com/codapult/codapult-guard/commit/0f728f44c920e13ea04f574ebfaa811896d0d93f))
+* **ci:** validate merge group base ancestry ([7368aa1](https://github.com/codapult/codapult-guard/commit/7368aa187462cd3e228be0cce9d672e785bee0cd))
+
+## [0.12.0](https://github.com/codapult/codapult-guard/compare/v0.11.0...v0.12.0) (2026-11-01)
+
+### Features
+
+* add host-review policy mode to CI template ([8aab882](https://github.com/codapult/codapult-guard/commit/8aab882ead62a74bab4dfa8230af18079ed46903))
+* add script to prepare fixture projects for testing ([0cedf8a](https://github.com/codapult/codapult-guard/commit/0cedf8a09276f615134b6554ef8fbbaabf68cdb7))
+
+### Bug Fixes
+
+* exclude .state.lock from verification scope files ([5e07858](https://github.com/codapult/codapult-guard/commit/5e078588f90a6736572087fdc88543e8c7540088))
+* harden consumer Guard workflow template ([ad8fc0a](https://github.com/codapult/codapult-guard/commit/ad8fc0a6d691d29575997be59de52d73dc7def73))
+* rename hono-node-server to node-server in fixture scripts ([a75dbe8](https://github.com/codapult/codapult-guard/commit/a75dbe8b0b7a445e10675a1087a7103879d54993))
+* simplify fixture project cloning step by using preparation script ([afbd548](https://github.com/codapult/codapult-guard/commit/afbd548aa54aa0a45decd8811c816f0776a34601))
+
+## [0.11.0](https://github.com/codapult/codapult-guard/compare/v0.10.0...v0.11.0) (2026-10-31)
+
+### Features
+
+* **guard:** add trusted PR attestation workflow template ([567c070](https://github.com/codapult/codapult-guard/commit/567c0709928d422b83ce2b6fe92395e98d1af3f2))
+* **guard:** audit verification and CI policy integrity ([4694286](https://github.com/codapult/codapult-guard/commit/4694286ebb30e59a1c71346bb250865760a2ee98))
+* **guard:** bind receipts to GitHub pull request SHAs ([1b02e19](https://github.com/codapult/codapult-guard/commit/1b02e198db033e213a7ddb1099392df7d436a572))
+* **guard:** export verification receipts as in-toto statements ([76935d3](https://github.com/codapult/codapult-guard/commit/76935d309fe5fd88e34e0809698d5ba01bef71ad))
+* **guard:** handle fork PR attestation skips ([83fbd94](https://github.com/codapult/codapult-guard/commit/83fbd9498d636b965ef4a3006a91a607f18f27d8))
+* **guard:** harden trusted PR attestations ([db20ab2](https://github.com/codapult/codapult-guard/commit/db20ab206c4ad0fdfff9bc54209e4a80000ad77f))
+
+### Bug Fixes
+
+* **guard:** address security scan findings ([74c561a](https://github.com/codapult/codapult-guard/commit/74c561a2bcef298d465d7eeb8d32008903bb4bf9))
+* **guard:** harden trusted PR verification ([495173c](https://github.com/codapult/codapult-guard/commit/495173c2f17b8f24bc1a0665bca7965d6bd29d82))
+
+## [0.10.0](https://github.com/codapult/codapult-guard/compare/v0.9.0...v0.10.0) (2026-10-19)
+
+### Features
+
+* harden verification provenance ([1232669](https://github.com/codapult/codapult-guard/commit/1232669c5bbbf88007d66357da5ab9c020249744))
+
+### Bug Fixes
+
+* validate receipt policy provenance ([25598f5](https://github.com/codapult/codapult-guard/commit/25598f593815f36b75963bca859a240d994866df))
+
 ## [0.9.0](https://github.com/codapult/codapult-guard/compare/v0.8.1...v0.9.0) (2026-10-15)
 
 ### Features

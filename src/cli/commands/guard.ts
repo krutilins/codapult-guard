@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import {
   GUARD_BASELINE_FILE,
@@ -61,6 +61,7 @@ import { analyzeProjectImpact, type GuardImpactGraphStatus } from '../../core/an
 import type { ImportResolutionSummary } from '../../core/discovery/discovery.js';
 import { listGuardRuns, summarizeGuardRuns } from '../../core/history/runs.js';
 import { auditGuardGovernance, type GuardGovernanceAudit } from '../../core/audit/governance.js';
+import { guardReceiptToInToto } from '../../core/output/attestation.js';
 
 interface GuardOutputOptions {
   json?: boolean | undefined;
@@ -73,6 +74,22 @@ interface GuardMachineOutputOptions extends GuardOutputOptions {
 interface GuardConfigLoadResult {
   config?: GuardConfig | undefined;
   invalid: boolean;
+}
+
+function terminalSafe(value: string): string {
+  let output = '';
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    output += code <= 0x1f || (code >= 0x7f && code <= 0x9f) ? ' ' : character;
+  }
+  return output;
+}
+
+function terminalSafeJson(value: unknown): string {
+  return (JSON.stringify(value, null, 2) ?? 'null').replace(
+    /[\u007f-\u009f]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
 }
 
 interface GuardInitOptions {
@@ -94,6 +111,8 @@ interface GuardVerifyOptions extends GuardOutputOptions {
   projectChecks?: boolean | undefined;
   policyBase?: string | undefined;
   failOnPolicyChange?: boolean | undefined;
+  failOnProtectedChanges?: boolean | undefined;
+  attestationOut?: string | undefined;
 }
 
 interface GuardGovernanceOptions extends GuardOutputOptions {
@@ -172,8 +191,8 @@ function loadConfigSafely(
       recoverable: true,
       hint: 'Repair or remove the invalid Guard artifact, then run `codapult-guard doctor`.',
     });
-    if (options.json || options.machine) console.log(JSON.stringify(payload, null, 2));
-    else fail(`${payload.message} Run \`codapult-guard doctor\` for details.`);
+    if (options.json || options.machine) console.log(terminalSafeJson(payload));
+    else fail(`${terminalSafe(payload.message)} Run \`codapult-guard doctor\` for details.`);
     process.exitCode = 1;
     return { invalid: true };
   }
@@ -384,7 +403,7 @@ export function guardRunsCommand(options: GuardOutputOptions = {}): void {
   }
   heading('Codapult Guard Runs');
   info(
-    `${result.summary.total} run(s); ${result.summary.failed} failed, ${result.summary.warnings} warning, average ${result.summary.averageDurationMs} ms`,
+    `${result.summary.total} run(s); ${result.summary.failed} failed, ${result.summary.incomplete} incomplete, ${result.summary.policyWeakened} policy-weakened, ${result.summary.warnings} warning, average ${result.summary.averageDurationMs} ms`,
   );
   for (const run of result.runs) {
     info(`${run.runId}: ${run.outcome}, gate=${run.gate}, ${run.durationMs} ms`);
@@ -494,10 +513,24 @@ export function guardVerifyCommand(options: GuardVerifyOptions = {}): void {
     projectChecks: options.projectChecks,
     policyBase: options.policyBase,
     failOnPolicyChange: options.failOnPolicyChange,
+    failOnProtectedChanges: options.failOnProtectedChanges,
   });
+  let attestationFailed = false;
+  if (options.attestationOut) {
+    try {
+      if (!result.run.receipt) throw new Error('Guard did not produce a verification receipt.');
+      const statement = guardReceiptToInToto(result.run.receipt);
+      writeFileSync(resolve(options.attestationOut), `${JSON.stringify(statement, null, 2)}\n`);
+      if (!options.json)
+        info(`in-toto verification statement written to ${options.attestationOut}`);
+    } catch (error) {
+      attestationFailed = true;
+      fail(error instanceof Error ? error.message : 'Could not write the in-toto statement.');
+    }
+  }
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
-    process.exitCode = result.status === 'ok' ? 0 : 1;
+    process.exitCode = result.status === 'ok' && !attestationFailed ? 0 : 1;
     return;
   }
   heading('Codapult Guard Verify');
@@ -512,15 +545,61 @@ export function guardVerifyCommand(options: GuardVerifyOptions = {}): void {
       warn('The working-tree policy differs from the base policy; the base policy was used.');
     }
   }
+  if (result.policySurface) {
+    dim(`protected paths changed: ${result.policySurface.changedPaths.length}`);
+    for (const path of result.policySurface.changedPaths)
+      warn(`verification-sensitive: ${terminalSafe(path)}`);
+    for (const change of result.policySurface.changes) {
+      dim(
+        `policy surface: ${change.kind}/${change.severity} ${terminalSafe(change.path)} (${terminalSafe(change.pattern)})`,
+      );
+    }
+    for (const marker of result.policySurface.suppressionMarkers)
+      warn(`inline suppression added: ${terminalSafe(marker)}`);
+    if (result.policySurface.workflowChanged)
+      warn('Workflow changes require host-enforced required checks and protected review.');
+  }
+  if (result.ciIntegrity) {
+    if (result.ciIntegrity.status === 'ok') success('CI integrity: passed');
+    else if (result.ciIntegrity.status === 'policy-weakened') {
+      fail('CI integrity: policy weakened');
+    } else {
+      warn('CI integrity: incomplete');
+    }
+    for (const workflow of result.ciIntegrity.workflows) {
+      for (const change of workflow.actionChanges ?? []) {
+        warn(
+          `[${terminalSafe(workflow.path)}] action refs changed for ${terminalSafe(change.name)}: ${terminalSafe(change.base.join(', ') || '(none)')} → ${terminalSafe(change.current.join(', ') || '(none)')}`,
+        );
+      }
+      for (const issue of workflow.issues)
+        fail(`[${terminalSafe(workflow.path)}] ${terminalSafe(issue.message)}`);
+    }
+  }
+  const receipt = result.run.receipt;
+  if (receipt?.effectiveInvocation) {
+    dim(
+      `effective invocation: ${terminalSafe(receipt.effectiveInvocation.command)} ${terminalSafe(receipt.effectiveInvocation.args.join(' '))}`,
+    );
+  }
+  if (result.incompleteStages && result.incompleteStages.length > 0) {
+    warn(`Required stages incomplete: ${result.incompleteStages.join(', ')}`);
+  }
   for (const [name, check] of Object.entries(result.checks)) {
-    if (check.status === 'passed') success(`${name}: passed`);
-    else if (check.status === 'not-configured') dim(`${name}: not configured`);
-    else fail(`${name}: failed (exit ${check.exitCode})`);
+    if (check.status === 'passed') success(`${terminalSafe(name)}: passed`);
+    else if (check.status === 'not-configured') dim(`${terminalSafe(name)}: not configured`);
+    else fail(`${terminalSafe(name)}: failed (exit ${check.exitCode})`);
   }
   for (const [name, check] of Object.entries(result.adapters ?? {})) {
-    if (check.status === 'passed') success(`${name}: passed`);
-    else if (check.status === 'not-configured') dim(`${name}: not configured`);
-    else fail(`${name}: failed (exit ${check.exitCode})`);
+    if (check.status === 'passed') success(`${terminalSafe(name)}: passed`);
+    else if (check.status === 'not-configured') dim(`${terminalSafe(name)}: not configured`);
+    else fail(`${terminalSafe(name)}: failed (exit ${check.exitCode})`);
+  }
+  for (const [name, evidence] of Object.entries(receipt?.checks ?? {})) {
+    if (!evidence.command) continue;
+    dim(
+      `${terminalSafe(name)} command (${evidence.execution ?? 'unknown'}): ${terminalSafe(evidence.command)}${(evidence.args?.length ?? 0) > 0 ? ` ${terminalSafe(evidence.args?.join(' ') ?? '')}` : ''}`,
+    );
   }
   const findings = result.architecture?.findings ?? [];
   if (findings.length === 0) success('architecture: no new regressions');
@@ -529,7 +608,7 @@ export function guardVerifyCommand(options: GuardVerifyOptions = {}): void {
   for (const issue of result.contractIssues) warn(`[${issue.contractId}] ${issue.message}`);
   if (result.contractIssues.length > 0) fail(`contracts: ${result.contractIssues.length} invalid`);
   dim(`requirements: ${result.requirement.message}`);
-  process.exitCode = result.status === 'ok' ? 0 : 1;
+  process.exitCode = result.status === 'ok' && !attestationFailed ? 0 : 1;
 }
 
 export function guardCheckCommand(options: GuardCheckOptions = {}): void {

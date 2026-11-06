@@ -2,9 +2,13 @@ import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -63,13 +67,21 @@ export type {
   GuardWaiverPolicy,
   GuardWaiverDecision,
 } from './model/types.js';
-export type GuardOutcomeStatus = 'pass' | 'fail' | 'warning' | 'needs-review' | 'not-configured';
+export type GuardOutcomeStatus =
+  | 'pass'
+  | 'fail'
+  | 'incomplete'
+  | 'policy-weakened'
+  | 'warning'
+  | 'needs-review'
+  | 'not-configured';
 
 export interface GuardOutcomeInput {
   configured?: boolean | undefined;
   errors?: number | undefined;
   warnings?: number | undefined;
   needsReview?: boolean | undefined;
+  incomplete?: boolean | undefined;
 }
 
 interface GuardStateLockOptions {
@@ -116,6 +128,7 @@ export function classifyGuardOutcome(input: GuardOutcomeInput): GuardOutcomeStat
   if (input.configured === false) return 'not-configured';
   if ((input.errors ?? 0) > 0) return 'fail';
   if (input.needsReview) return 'needs-review';
+  if (input.incomplete) return 'incomplete';
   return (input.warnings ?? 0) > 0 ? 'warning' : 'pass';
 }
 export interface GuardContract {
@@ -171,6 +184,40 @@ export interface GuardConfig {
   budgets?: GuardBudget[] | undefined;
   approval?: GuardApprovalPolicy | undefined;
   waiverPolicy?: GuardWaiverPolicy | undefined;
+  protectedPaths?: string[] | undefined;
+  policySurface?: GuardPolicySurfacePolicy | undefined;
+  githubActions?: GuardGitHubActionsPolicy | undefined;
+}
+
+export interface GuardPolicySurfacePolicy {
+  paths: {
+    pattern: string;
+    kind:
+      | 'ci-workflow'
+      | 'guard-policy'
+      | 'ownership'
+      | 'dependency-input'
+      | 'tool-config'
+      | 'ignore-config'
+      | 'suppression-source'
+      | 'custom';
+    severity: 'warning' | 'error';
+  }[];
+}
+
+export interface GuardGitHubActionsPolicy {
+  workflows: {
+    path: string;
+    job: string;
+    requiredRunIncludes: string[];
+    requiredNeeds?: string[] | undefined;
+    requirePullRequest?: boolean | undefined;
+    requireUnfilteredPullRequest?: boolean | undefined;
+    requireUnconditionalJob?: boolean | undefined;
+    requireFullShaActions?: boolean | undefined;
+    disallowContinueOnError?: boolean | undefined;
+    maxPermissions?: Record<string, 'none' | 'read' | 'write'> | undefined;
+  }[];
 }
 
 export function getGuardPolicyMutationPolicy(
@@ -346,8 +393,18 @@ export interface GuardAgentConfig {
     maxIterations: number;
     projectChecks: boolean;
     checks: ('lint' | 'typecheck' | 'test' | 'build')[];
+    requiredStages?: GuardRequiredStage[] | undefined;
   };
 }
+
+export type GuardRequiredStage =
+  | 'runtime'
+  | 'project-checks'
+  | 'adapters'
+  | 'architecture-policy'
+  | 'policy-surface'
+  | 'ci-integrity'
+  | 'verification-scope';
 
 export interface GuardFinding {
   ruleId: string;
@@ -461,6 +518,7 @@ export const defaultGuardAgentConfig: GuardAgentConfig = {
     maxIterations: 3,
     projectChecks: true,
     checks: ['lint', 'typecheck', 'test', 'build'],
+    requiredStages: ['architecture-policy'],
   },
 };
 
@@ -663,17 +721,22 @@ function isGuardConfig(value: unknown): value is GuardConfig {
 }
 
 function readJson(filePath: string): unknown {
-  let stats;
+  let descriptor: number | undefined;
   try {
-    stats = lstatSync(filePath);
-  } catch {
+    const pathStats = lstatSync(filePath);
+    if (pathStats.isSymbolicLink()) throw new GuardConfigError(filePath);
+    descriptor = openSync(filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const stats = fstatSync(descriptor);
+    if (!stats.isFile() || stats.dev !== pathStats.dev || stats.ino !== pathStats.ino) {
+      throw new GuardConfigError(filePath);
+    }
+    return JSON.parse(readFileSync(descriptor, 'utf8')) as unknown;
+  } catch (error) {
+    if (error instanceof GuardConfigError) throw error;
+    if ((error as NodeJS.ErrnoException).code === 'ELOOP') throw new GuardConfigError(filePath);
     return undefined;
-  }
-  if (stats.isSymbolicLink()) throw new GuardConfigError(filePath);
-  try {
-    return JSON.parse(readFileSync(filePath, 'utf8')) as unknown;
-  } catch {
-    return undefined;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
   }
 }
 
@@ -796,6 +859,50 @@ export function fingerprintGuardConfig(guardConfig: GuardConfig): string {
           left.id.localeCompare(right.id),
         ),
         approval: guardConfig.approval ?? defaultGuardConfig.approval,
+        ...(guardConfig.protectedPaths !== undefined && guardConfig.protectedPaths.length > 0
+          ? { protectedPaths: [...guardConfig.protectedPaths].sort() }
+          : {}),
+        ...(guardConfig.policySurface
+          ? {
+              policySurface: {
+                paths: [...guardConfig.policySurface.paths]
+                  .map((entry) => ({ ...entry, severity: entry.severity ?? 'error' }))
+                  .sort((left, right) =>
+                    `${left.pattern}:${left.kind}:${left.severity}`.localeCompare(
+                      `${right.pattern}:${right.kind}:${right.severity}`,
+                    ),
+                  ),
+              },
+            }
+          : {}),
+        ...(guardConfig.githubActions
+          ? {
+              githubActions: {
+                workflows: guardConfig.githubActions.workflows
+                  .map((workflow) => ({
+                    ...workflow,
+                    requiredNeeds: workflow.requiredNeeds
+                      ? [...workflow.requiredNeeds].sort()
+                      : undefined,
+                    requirePullRequest: workflow.requirePullRequest ?? true,
+                    requireUnfilteredPullRequest: workflow.requireUnfilteredPullRequest ?? true,
+                    requireUnconditionalJob: workflow.requireUnconditionalJob ?? true,
+                    requireFullShaActions: workflow.requireFullShaActions ?? true,
+                    disallowContinueOnError: workflow.disallowContinueOnError ?? true,
+                    maxPermissions: workflow.maxPermissions
+                      ? Object.fromEntries(
+                          Object.entries(workflow.maxPermissions).sort(([left], [right]) =>
+                            left.localeCompare(right),
+                          ),
+                        )
+                      : undefined,
+                  }))
+                  .sort((left, right) =>
+                    `${left.path}:${left.job}`.localeCompare(`${right.path}:${right.job}`),
+                  ),
+              },
+            }
+          : {}),
       }),
     )
     .digest('hex');
