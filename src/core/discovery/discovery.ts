@@ -11,15 +11,19 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, extname, join, normalize, relative, resolve } from 'node:path';
-import { Project, SyntaxKind, type SourceFile } from 'ts-morph';
+import { basename, dirname, extname, relative, resolve } from 'node:path';
 import { config } from '../config.js';
-import { parsePythonSource, type PythonImportFact } from './python-imports.js';
+import { contentHash } from '../files.js';
+import { ecosystemRegistry } from '../ecosystems/index.js';
 import {
-  pythonResolutionIndex,
-  resolvePythonImports,
-  type PythonResolutionIndex,
-} from './python-resolution.js';
+  languageRegistry,
+  sourceLanguage,
+  type SourceLanguage,
+  type LanguageProjectFacts,
+} from '../languages/index.js';
+export { sourceLanguage, collectedFacts } from '../languages/index.js';
+export type { SourceLanguage, ModuleFact } from '../languages/index.js';
+export { pythonProjectRoots } from '../ecosystems/index.js';
 
 export interface ProjectFileRecord {
   path: string;
@@ -49,11 +53,11 @@ export interface ModuleRecord {
     variables: number;
   };
   directives: string[];
-  /** Python import statements as parsed, the input of Python resolution. */
-  pythonImports?: PythonImportFact[] | undefined;
+  /** Opaque parser facts, interpreted only by the owning language backend. */
+  parseFacts?: unknown;
   /** Up to 5 lines with syntax error nodes. Informational; never produces findings (D3). */
   parseDiagnostics?: number[] | undefined;
-  /** Absolute dotted name of each convertible Python relative import spelling (D7, D9). */
+  /** Canonical source names supplied by the owning backend for relative import spellings. */
   canonicalImports?: Record<string, string> | undefined;
 }
 
@@ -188,74 +192,16 @@ const DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 const IGNORED_DIRECTORIES = new Set([
   '.git',
-  '.next',
-  '.turbo',
   'build',
   'coverage',
   'dist',
-  'node_modules',
   '.codapult',
-  '.vercel',
-  'out',
-  'playwright-report',
-  'test-results',
   'certificates',
-  '__pycache__',
-  '.venv',
-  'venv',
-  '.tox',
-  '.nox',
-  '.mypy_cache',
-  '.pytest_cache',
-  '.ruff_cache',
-  '.eggs',
 ]);
-
 function ignoredDirectory(name: string): boolean {
-  return IGNORED_DIRECTORIES.has(name) || name.endsWith('.egg-info');
+  return IGNORED_DIRECTORIES.has(name) || ecosystemRegistry.ignoredDirectory(name);
 }
-
-const JS_TS_SOURCE_EXTENSIONS = new Set([
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.cjs',
-  '.ts',
-  '.tsx',
-  '.mts',
-  '.cts',
-]);
-const PYTHON_SOURCE_EXTENSIONS = new Set(['.py']);
-/** Files whose presence marks a Python project root. Their content is not parsed (C2). */
-const PYTHON_PROJECT_MARKERS = new Set(['pyproject.toml', 'setup.cfg', 'setup.py']);
-const PYTHON_CONFIG_NAMES = new Set([
-  'pipfile',
-  'pipfile.lock',
-  'poetry.lock',
-  'uv.lock',
-  'pdm.lock',
-  'setup.cfg',
-  'pyproject.toml',
-  'tox.ini',
-]);
-const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const DOCUMENTATION_EXTENSIONS = new Set(['.md', '.mdx', '.rst', '.txt']);
-const CONFIG_NAMES = new Set([
-  'package.json',
-  'tsconfig.json',
-  'jsconfig.json',
-  '.eslintrc',
-  '.prettierrc',
-  'vite.config.ts',
-  'vite.config.js',
-  'next.config.ts',
-  'next.config.js',
-  'next.config.mjs',
-  'webpack.config.js',
-  'jest.config.ts',
-  'vitest.config.ts',
-  'playwright.config.ts',
-]);
 
 const discoveryCache = new Map<
   string,
@@ -265,7 +211,7 @@ const discoveryReuse = new Map<string, number>();
 const discoveryCacheHits = new Map<string, boolean>();
 // Bump when the persisted model shape changes; old cache entries must never
 // bypass discovery and return an incomplete ProjectModel.
-const DISCOVERY_CACHE_VERSION = 8;
+const DISCOVERY_CACHE_VERSION = 9;
 
 function discoveryCachePath(root: string): string {
   return resolve(root, `.${config.appName}/guard/cache.json`);
@@ -290,29 +236,16 @@ export function clearDiscoveryCache(root: string): void {
   rmSync(discoveryCachePath(root), { force: true });
 }
 
-function contentHash(root: string, path: string): string {
-  return createHash('sha256')
-    .update(readFileSync(resolve(root, path)))
-    .digest('hex');
-}
-
-const RESOLUTION_CONFIG_NAME =
-  /^(?:(?:tsconfig|jsconfig)(?:\..+)?\.json|package\.json|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/;
-
-/**
- * Fingerprint of everything JS/TS import resolution reads: the content of compiler configs,
- * package manifests, and lockfiles, plus the paths of files a specifier can resolve to. Module
- * records are reused only while it is unchanged. A dependency install that leaves the lockfile
- * unchanged is not detected.
- */
+/** Hash both backend and ecosystem resolution inputs; source contents are parsed separately. */
 function resolutionFingerprint(root: string, allFiles: string[]): string {
   const hash = createHash('sha256');
   for (const path of [...allFiles].sort()) {
-    const resolutionConfig = RESOLUTION_CONFIG_NAME.test(basename(path));
-    const extension = extname(path);
-    if (!resolutionConfig && !JS_TS_SOURCE_EXTENSIONS.has(extension) && extension !== '.json')
-      continue;
-    hash.update(`${path}\0${resolutionConfig ? contentHash(root, path) : ''}\n`);
+    const inputs = [
+      languageRegistry.resolutionInput(path),
+      ecosystemRegistry.resolutionInput(path),
+    ];
+    if (!inputs.some(Boolean)) continue;
+    hash.update(`${path}\0${inputs.includes('content') ? contentHash(root, path) : ''}\n`);
   }
   return hash.digest('hex');
 }
@@ -332,102 +265,13 @@ export function findGuardRoot(from: string = process.cwd()): string {
   while (directory !== filesystemRoot) {
     if (
       existsSync(resolve(directory, '.git')) ||
-      existsSync(resolve(directory, 'package.json')) ||
-      existsSync(resolve(directory, 'tsconfig.json')) ||
-      existsSync(resolve(directory, 'jsconfig.json')) ||
-      [...PYTHON_PROJECT_MARKERS].some((marker) => existsSync(resolve(directory, marker)))
+      ecosystemRegistry.rootMarkers.some((marker) => existsSync(resolve(directory, marker)))
     ) {
       return directory;
     }
     directory = dirname(directory);
   }
   return resolve(from);
-}
-
-function readJsonObject(path: string): Record<string, unknown> {
-  try {
-    const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
-    return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function asStringRecord(value: unknown): Record<string, string> {
-  if (value === null || typeof value !== 'object') return {};
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, string] => typeof entry[1] === 'string',
-    ),
-  );
-}
-
-function packageManager(root: string): string | undefined {
-  const packageJson = readJsonObject(resolve(root, 'package.json'));
-  if (typeof packageJson.packageManager === 'string') return packageJson.packageManager;
-  for (const [file, manager] of [
-    ['pnpm-lock.yaml', 'pnpm'],
-    ['yarn.lock', 'yarn'],
-    ['package-lock.json', 'npm'],
-    ['bun.lockb', 'bun'],
-    ['bun.lock', 'bun'],
-  ] as const) {
-    try {
-      statSync(resolve(root, file));
-      return manager;
-    } catch {
-      // Try the next lockfile.
-    }
-  }
-  return undefined;
-}
-
-function workspacePackages(
-  root: string,
-  files: string[],
-): ProjectModel['project']['workspacePackages'] {
-  return files
-    .filter((path) => path !== 'package.json' && basename(path) === 'package.json')
-    .map((path) => {
-      const manifest = readJsonObject(resolve(root, path));
-      return {
-        path: dirname(path).replaceAll('\\', '/') || '.',
-        ...(typeof manifest.name === 'string' ? { name: manifest.name } : {}),
-        private: manifest.private === true,
-        scripts: asStringRecord(manifest.scripts),
-        dependencies: Object.keys({
-          ...asStringRecord(manifest.dependencies),
-          ...asStringRecord(manifest.devDependencies),
-          ...asStringRecord(manifest.peerDependencies),
-        }).sort(),
-        ...(manifest.exports !== undefined
-          ? {
-              exports: Array.isArray(manifest.exports)
-                ? manifest.exports.filter((item): item is string => typeof item === 'string')
-                : manifest.exports !== null && typeof manifest.exports === 'object'
-                  ? Object.keys(manifest.exports)
-                  : [],
-            }
-          : {}),
-        ...(Array.isArray(readJsonObject(resolve(root, dirname(path), 'tsconfig.json')).references)
-          ? {
-              projectReferences: (
-                readJsonObject(resolve(root, dirname(path), 'tsconfig.json'))
-                  .references as unknown[]
-              )
-                .filter(
-                  (reference): reference is { path: string } =>
-                    reference !== null &&
-                    typeof reference === 'object' &&
-                    typeof (reference as { path?: unknown }).path === 'string',
-                )
-                .map((reference) => reference.path)
-                .sort(),
-            }
-          : {}),
-      };
-    })
-    .sort((left, right) => left.path.localeCompare(right.path));
 }
 
 function listFiles(root: string, directory = root, maxFiles = DEFAULT_MAX_FILES): string[] {
@@ -449,413 +293,17 @@ function listFiles(root: string, directory = root, maxFiles = DEFAULT_MAX_FILES)
   return result.sort();
 }
 
-export type SourceLanguage = 'js-ts' | 'python';
-
-/** Language of a source file by extension. Import resolution never crosses languages. */
-export function sourceLanguage(path: string): SourceLanguage | undefined {
-  const extension = extname(path);
-  if (JS_TS_SOURCE_EXTENSIONS.has(extension)) return 'js-ts';
-  if (PYTHON_SOURCE_EXTENSIONS.has(extension)) return 'python';
-  return undefined;
-}
-
-/** A kind of module fact that policy checks read (D17). */
-export type ModuleFact = 'imports' | 'calls' | 'directives' | 'packages';
-
-/**
- * Facts discovery collects per language. `packages` means membership in a `package.json`
- * workspace package, which Python modules do not have in the MVP (C2).
- */
-const COLLECTED_FACTS: Record<SourceLanguage, readonly ModuleFact[]> = {
-  'js-ts': ['imports', 'calls', 'directives', 'packages'],
-  python: ['imports'],
-};
-
-/** Facts discovery collects for a module at this path; empty for files that are not modules. */
-export function collectedFacts(path: string): readonly ModuleFact[] {
-  const language = sourceLanguage(path);
-  return language ? COLLECTED_FACTS[language] : [];
-}
-
-/** Python test files (D11): `test_*.py`, `*_test.py`, `conftest.py`, or a `tests`/`test` segment. */
-function pythonTestFile(path: string): boolean {
-  const segments = path.toLowerCase().split('/');
-  const name = segments.pop() ?? '';
-  return (
-    /^test_.*\.py$|_test\.py$|^conftest\.py$/.test(name) ||
-    segments.some((segment) => segment === 'tests' || segment === 'test')
-  );
-}
-
 function fileKind(path: string): ProjectFileRecord['kind'] {
+  const backend = languageRegistry.forPath(path);
+  if (backend) return backend.classifyFile(path);
   const name = basename(path).toLowerCase();
-  if (sourceLanguage(path) === 'python') {
-    // Python modules named like configs or schemas (settings/config.py, app/schemas.py) are
-    // ordinary modules, so only the test and migration checks apply.
-    if (pythonTestFile(path)) return 'test';
-    if (path.includes('/migrations/')) return 'migration';
-    return 'source';
-  }
   if (/\.(?:test|spec)\.[^.]+$/.test(name) || path.includes('/__tests__/')) return 'test';
   if (name.includes('schema') || path.includes('/schemas/')) return 'schema';
   if (path.includes('/migrations/') || path.includes('/drizzle/')) return 'migration';
-  // Before the documentation check, which would classify requirements.txt by its extension.
-  if (PYTHON_CONFIG_NAMES.has(name) || /^requirements.*\.txt$/.test(name)) return 'config';
+  if (ecosystemRegistry.isConfigFile(path)) return 'config';
   if (DOCUMENTATION_EXTENSIONS.has(extname(name))) return 'documentation';
-  if (CONFIG_NAMES.has(name) || name.includes('config')) return 'config';
-  if (JS_TS_SOURCE_EXTENSIONS.has(extname(name))) return 'source';
+  if (name.includes('config')) return 'config';
   return 'other';
-}
-
-/**
- * Directories containing a Python project marker, sorted, with `.` for the project root. Task 05
- * uses them as resolution roots (D9).
- */
-export function pythonProjectRoots(paths: string[]): string[] {
-  return [
-    ...new Set(
-      paths
-        .filter((path) => PYTHON_PROJECT_MARKERS.has(basename(path)))
-        .map((path) => dirname(path).replaceAll('\\', '/')),
-    ),
-  ].sort();
-}
-
-/**
- * JS/TS resolution candidates for a project-relative path base. Another language's source file is
- * never one. A trailing slash limits the candidates to the directory index, and `.` or an empty
- * base names the project root.
- */
-function jsTsResolutionCandidates(base: string): string[] {
-  const directoryOnly = base.endsWith('/');
-  const trimmed = base.replace(/\/+$/, '');
-  const isRoot = trimmed === '' || trimmed === '.';
-  const indexBase = isRoot ? 'index' : `${trimmed}/index`;
-  const baseLanguage = sourceLanguage(trimmed);
-  const fileCandidates =
-    directoryOnly || isRoot
-      ? []
-      : [
-          ...(baseLanguage === undefined || baseLanguage === 'js-ts' ? [trimmed] : []),
-          ...[...JS_TS_SOURCE_EXTENSIONS].map((extension) => `${trimmed}${extension}`),
-        ];
-  return [
-    ...fileCandidates,
-    ...[...JS_TS_SOURCE_EXTENSIONS].map((extension) => `${indexBase}${extension}`),
-  ];
-}
-
-function sourceFilePath(
-  root: string,
-  sourceFile: SourceFile,
-  projectFiles: Set<string>,
-): string | undefined {
-  const path = relative(root, sourceFile.getFilePath()).replaceAll('\\', '/');
-  return path.startsWith('..') || !projectFiles.has(path) ? undefined : path;
-}
-
-function resolveInternalImport(
-  from: string,
-  importPath: string,
-  modules: Set<string>,
-): string | undefined {
-  if (!importPath.startsWith('.')) return undefined;
-  const base = normalize(join(dirname(from), importPath));
-  return jsTsResolutionCandidates(base).find((candidate) => modules.has(candidate));
-}
-
-interface PathAlias {
-  pattern: string;
-  baseDirectory: string;
-  targets: string[];
-}
-
-function pathAliases(root: string): PathAlias[] {
-  return listFiles(root)
-    .filter((path) => basename(path) === 'tsconfig.json' || basename(path) === 'jsconfig.json')
-    .flatMap((path) => {
-      const tsconfigJson = readJsonObject(resolve(root, path));
-      const compilerOptions =
-        tsconfigJson.compilerOptions !== null && typeof tsconfigJson.compilerOptions === 'object'
-          ? (tsconfigJson.compilerOptions as Record<string, unknown>)
-          : {};
-      const paths = compilerOptions.paths;
-      if (paths === null || typeof paths !== 'object') return [];
-      const baseUrl = typeof compilerOptions.baseUrl === 'string' ? compilerOptions.baseUrl : '.';
-      return Object.entries(paths).flatMap(([pattern, value]) => {
-        if (!Array.isArray(value)) return [];
-        const targets = value.filter((item): item is string => typeof item === 'string');
-        return targets.length > 0
-          ? [{ pattern, baseDirectory: resolve(root, dirname(path), baseUrl), targets }]
-          : [];
-      });
-    });
-}
-
-function aliasParts(alias: PathAlias): { prefix: string; suffix: string } {
-  const wildcard = alias.pattern.indexOf('*');
-  return wildcard >= 0
-    ? { prefix: alias.pattern.slice(0, wildcard), suffix: alias.pattern.slice(wildcard + 1) }
-    : { prefix: alias.pattern, suffix: '' };
-}
-
-/** The text an alias wildcard matches, or undefined when the specifier does not match the alias. */
-function aliasReplacement(alias: PathAlias, importPath: string): string | undefined {
-  const { prefix, suffix } = aliasParts(alias);
-  if (!importPath.startsWith(prefix) || (suffix && !importPath.endsWith(suffix))) return undefined;
-  return importPath.slice(prefix.length, importPath.length - suffix.length);
-}
-
-function resolveAliasedImport(
-  root: string,
-  importPath: string,
-  aliases: PathAlias[],
-  modules: Set<string>,
-): string | undefined {
-  for (const alias of aliases) {
-    const replacement = aliasReplacement(alias, importPath);
-    if (replacement === undefined) continue;
-    for (const target of alias.targets) {
-      const targetPath = target.replace('*', replacement);
-      const absoluteBase = resolve(alias.baseDirectory, targetPath);
-      const relativeBase = relative(root, absoluteBase);
-      const normalizedBase = relativeBase.replace(/^\.\//, '').replaceAll('\\', '/');
-      const projectCandidate = jsTsResolutionCandidates(normalizedBase).find((candidate) =>
-        modules.has(candidate),
-      );
-      if (projectCandidate) return projectCandidate;
-    }
-  }
-  return undefined;
-}
-
-/**
- * Specifiers that point at project code by JS/TS rules but resolve to no project file: relative
- * and absolute paths, path aliases, and workspace package names. Relative specifiers that the
- * path fallback resolves, including non-module files such as stylesheets, are not unresolved.
- */
-function unresolvedJsTsImports(
-  path: string,
-  specifiers: string[],
-  resolvedImportMap: Record<string, string>,
-  projectFiles: Set<string>,
-  aliases: PathAlias[],
-  workspaceNames: ReadonlySet<string>,
-): string[] {
-  return specifiers
-    .filter((specifier) => {
-      if (Object.hasOwn(resolvedImportMap, specifier)) return false;
-      if (specifier.startsWith('.')) {
-        return resolveInternalImport(path, specifier, projectFiles) === undefined;
-      }
-      if (specifier.startsWith('/')) return true;
-      // A catch-all alias such as "*" would classify every package as local.
-      const matchesAlias = aliases.some(
-        (alias) =>
-          aliasParts(alias).prefix !== '' && aliasReplacement(alias, specifier) !== undefined,
-      );
-      return (
-        matchesAlias ||
-        [...workspaceNames].some((name) => specifier === name || specifier.startsWith(`${name}/`))
-      );
-    })
-    .sort();
-}
-
-function parseJsTsModule(
-  project: Project,
-  root: string,
-  path: string,
-  projectFiles: Set<string>,
-  aliases: PathAlias[],
-): ModuleRecord | undefined {
-  let sourceFile: SourceFile;
-  try {
-    sourceFile =
-      project.getSourceFile(resolve(root, path)) ??
-      project.addSourceFileAtPath(resolve(root, path));
-  } catch {
-    return undefined;
-  }
-  const imports: string[] = [];
-  const importedSymbols: string[] = [];
-  const exports: string[] = [];
-  const dynamicImports: string[] = [];
-  const declarations = { classes: 0, functions: 0, interfaces: 0, types: 0, variables: 0 };
-  const resolvedImports = new Set<string>();
-  const resolvedImportMap: Record<string, string> = {};
-  // Static imports take precedence over re-exports, which take precedence over dynamic imports.
-  const importLines: Record<string, number> = {};
-  const recordLine = (specifier: string, line: number): void => {
-    if (!Object.hasOwn(importLines, specifier)) importLines[specifier] = line;
-  };
-  for (const declaration of sourceFile.getImportDeclarations()) {
-    const importPath = declaration.getModuleSpecifierValue();
-    imports.push(importPath);
-    recordLine(importPath, declaration.getStartLineNumber());
-    const defaultImport = declaration.getDefaultImport()?.getText();
-    if (defaultImport) importedSymbols.push(defaultImport);
-    const namespaceImport = declaration.getNamespaceImport()?.getText();
-    if (namespaceImport) importedSymbols.push(namespaceImport);
-    for (const namedImport of declaration.getNamedImports()) {
-      importedSymbols.push(namedImport.getAliasNode()?.getText() ?? namedImport.getName());
-    }
-    const resolved = declaration.getModuleSpecifierSourceFile();
-    const resolvedPath =
-      (resolved && sourceFilePath(root, resolved, projectFiles)) ??
-      resolveAliasedImport(root, importPath, aliases, projectFiles);
-    if (resolvedPath) {
-      resolvedImports.add(resolvedPath);
-      resolvedImportMap[importPath] = resolvedPath;
-    }
-  }
-  for (const declaration of sourceFile.getExportDeclarations()) {
-    const moduleSpecifier = declaration.getModuleSpecifierValue();
-    if (!moduleSpecifier) continue;
-    exports.push(moduleSpecifier);
-    recordLine(moduleSpecifier, declaration.getStartLineNumber());
-    const resolved = declaration.getModuleSpecifierSourceFile();
-    const resolvedPath =
-      (resolved && sourceFilePath(root, resolved, projectFiles)) ??
-      resolveAliasedImport(root, moduleSpecifier, aliases, projectFiles);
-    if (resolvedPath) {
-      resolvedImports.add(resolvedPath);
-      resolvedImportMap[moduleSpecifier] = resolvedPath;
-    }
-  }
-  declarations.classes = sourceFile.getClasses().length;
-  declarations.functions = sourceFile.getFunctions().length;
-  declarations.interfaces = sourceFile.getInterfaces().length;
-  declarations.types = sourceFile.getTypeAliases().length;
-  declarations.variables = sourceFile.getVariableStatements().length;
-  const calls = sourceFile
-    .getDescendantsOfKind(SyntaxKind.CallExpression)
-    .map((call) => call.getExpression().getText())
-    .filter((expression) => /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(expression));
-  for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
-    const expression = call.getExpression().getText();
-    if (expression !== 'import' && expression !== 'require') continue;
-    const argument = call.getArguments()[0];
-    if (!argument.isKind(SyntaxKind.StringLiteral)) continue;
-    const importPath = argument.getText().slice(1, -1);
-    if (!importPath) continue;
-    dynamicImports.push(importPath);
-    recordLine(importPath, call.getStartLineNumber());
-    const resolvedPath =
-      resolveInternalImport(path, importPath, projectFiles) ??
-      resolveAliasedImport(root, importPath, aliases, projectFiles);
-    if (resolvedPath) {
-      resolvedImports.add(resolvedPath);
-      resolvedImportMap[importPath] = resolvedPath;
-    }
-  }
-  const directives = sourceFile
-    .getStatements()
-    .filter((statement) => statement.isKind(SyntaxKind.ExpressionStatement))
-    .map((statement) => statement.getExpression())
-    .filter((expression) => {
-      if (!expression.isKind(SyntaxKind.StringLiteral)) return false;
-      const value = expression.getText().slice(1, -1);
-      return value === 'use client' || value === 'use server';
-    })
-    .map((expression) => expression.getText().slice(1, -1));
-  return {
-    path,
-    contentHash: contentHash(root, path),
-    imports: [...new Set(imports)].sort(),
-    importedSymbols: [...new Set(importedSymbols)].sort(),
-    exports: [...new Set(exports)].sort(),
-    calls: [...new Set(calls)].sort(),
-    resolvedImports: [...resolvedImports].sort(),
-    resolvedImportMap,
-    importLines,
-    dynamicImports: [...new Set(dynamicImports)].sort(),
-    declarations,
-    directives,
-  };
-}
-
-/** Python parse facts (D4). Resolution fields are filled by the Python resolver (Task 05). */
-function parsePythonModule(root: string, path: string): ModuleRecord | undefined {
-  let source: string;
-  try {
-    source = readFileSync(resolve(root, path), 'utf8');
-  } catch {
-    return undefined;
-  }
-  const parsed = parsePythonSource(source);
-  const importLines: Record<string, number> = {};
-  for (const fact of parsed.imports) {
-    if (!Object.hasOwn(importLines, fact.module)) importLines[fact.module] = fact.line;
-  }
-  return {
-    path,
-    contentHash: contentHash(root, path),
-    imports: [...new Set(parsed.imports.map((fact) => fact.module))].sort(),
-    importedSymbols: [...new Set(parsed.importedSymbols)].sort(),
-    exports: [],
-    calls: [],
-    resolvedImports: [],
-    resolvedImportMap: {},
-    importLines,
-    dynamicImports: [],
-    declarations: parsed.declarations,
-    directives: [],
-    pythonImports: parsed.imports,
-    ...(parsed.errorLines.length > 0 ? { parseDiagnostics: parsed.errorLines } : {}),
-  };
-}
-
-function parseModule(
-  project: Project,
-  root: string,
-  path: string,
-  projectFiles: Set<string>,
-  aliases: PathAlias[],
-): ModuleRecord | undefined {
-  const language = sourceLanguage(path);
-  if (language === 'js-ts') return parseJsTsModule(project, root, path, projectFiles, aliases);
-  if (language === 'python') return parsePythonModule(root, path);
-  return undefined;
-}
-
-/** Replaces a Python module's resolution fields with a fresh resolution of its parse facts (D18). */
-function withPythonResolution(module: ModuleRecord, index: PythonResolutionIndex): ModuleRecord {
-  if (module.pythonImports === undefined) return module;
-  const { canonicalImports, ...resolution } = resolvePythonImports(
-    module.path,
-    module.pythonImports,
-    index,
-  );
-  return {
-    ...module,
-    ...resolution,
-    canonicalImports: Object.keys(canonicalImports).length > 0 ? canonicalImports : undefined,
-  };
-}
-
-/**
- * Adds `unresolvedImports` to a parsed or reused module. It runs on every discovery because the
- * result depends on non-source files, such as `./styles.css`, that do not invalidate module reuse.
- */
-function withImportStatus(
-  module: ModuleRecord,
-  projectFiles: Set<string>,
-  aliases: PathAlias[],
-  workspaceNames: ReadonlySet<string>,
-): ModuleRecord {
-  if (sourceLanguage(module.path) !== 'js-ts') return module;
-  return {
-    ...module,
-    unresolvedImports: unresolvedJsTsImports(
-      module.path,
-      [...new Set([...module.imports, ...module.exports, ...module.dynamicImports])],
-      module.resolvedImportMap ?? {},
-      projectFiles,
-      aliases,
-      workspaceNames,
-    ),
-  };
 }
 
 export type ImportResolutionStatus = 'resolved' | 'unresolved' | 'external';
@@ -875,16 +323,7 @@ export function importResolutionStatus(
 ): ImportResolutionStatus {
   if (module.resolvedImportMap?.[specifier] !== undefined) return 'resolved';
   if (module.unresolvedImports?.includes(specifier)) return 'unresolved';
-  if (sourceLanguage(module.path) === 'python') {
-    // `from app import services` needs only the derived `app.services`, not `app` itself.
-    const prefix = specifier.endsWith('.') ? specifier : `${specifier}.`;
-    const satisfiedByChildren = Object.keys(module.resolvedImportMap ?? {}).some(
-      (key) => key.startsWith(prefix) && /^[^.]+$/.test(key.slice(prefix.length)),
-    );
-    if (satisfiedByChildren) return 'resolved';
-    return specifier.startsWith('.') ? 'unresolved' : 'external';
-  }
-  return specifier.startsWith('.') ? 'resolved' : 'external';
+  return languageRegistry.forPath(module.path)?.importStatus(module, specifier) ?? 'external';
 }
 
 /** Unique import specifiers of a module: static imports, re-exports, and literal dynamic imports. */
@@ -929,13 +368,9 @@ function runGit(root: string, args: string[]): string | undefined {
   }
 }
 
-function discoverySignature(
-  root: string,
-  packageJson: Record<string, unknown>,
-  allFiles: string[],
-): string {
+function discoverySignature(root: string, allFiles: string[]): string {
   return JSON.stringify([
-    JSON.stringify(packageJson),
+    ...ecosystemRegistry.signatureInputs({ root, allFiles }),
     allFiles.map((path) => {
       const stat = statSync(resolve(root, path));
       return [path, stat.size, stat.mtimeMs, contentHash(root, path)];
@@ -997,12 +432,9 @@ function inferFrameworks(
 function layerForPath(path: string): string {
   const segments = path.toLowerCase().split('/');
   if (segments.includes('__tests__') || /\.(?:test|spec)\./.test(path)) return 'tests';
-  const python = sourceLanguage(path) === 'python';
-  if (python && pythonTestFile(path)) return 'tests';
-  // `app/` and `pages/` are Next.js route directories. In Python `app` is usually the top-level
-  // package, so only `routes` and `api` mark Python routes.
-  const routeSegments = python ? ['routes', 'api'] : ['app', 'pages', 'routes', 'api'];
-  if (segments.some((segment) => routeSegments.includes(segment))) return 'routes';
+  if (languageRegistry.forPath(path)?.isTestFile(path)) return 'tests';
+  if (segments.some((segment) => languageRegistry.routeLayerSegments(path).includes(segment)))
+    return 'routes';
   if (segments.includes('components') || segments.includes('ui')) return 'ui';
   if (segments.some((segment) => ['domain', 'entities', 'models'].includes(segment))) {
     return 'domain';
@@ -1039,12 +471,10 @@ export function buildModuleTargetGraph(modules: ModuleRecord[]): Map<string, str
   return new Map(
     modules.map((module) => {
       const targets = new Set(module.resolvedImports.filter((path) => moduleSet.has(path)));
-      if (sourceLanguage(module.path) === 'js-ts') {
-        for (const importPath of [...module.imports, ...module.dynamicImports]) {
-          const target = resolveInternalImport(module.path, importPath, moduleSet);
-          if (target) targets.add(target);
-        }
-      }
+      for (const target of languageRegistry
+        .forPath(module.path)
+        ?.fallbackTargets(module, moduleSet) ?? [])
+        targets.add(target);
       return [module.path, [...targets].sort()] as const;
     }),
   );
@@ -1366,9 +796,8 @@ function buildInsights(
   root: string,
   files: ProjectFileRecord[],
   modules: ModuleRecord[],
-  sourceFiles: string[],
   dependencies: Record<string, string>,
-  astProject: Project,
+  facts: LanguageProjectFacts,
 ): ProjectModel['insights'] {
   const layers: Record<string, string[]> = {};
   for (const file of files.filter((candidate) =>
@@ -1380,11 +809,8 @@ function buildInsights(
   for (const paths of Object.values(layers)) paths.sort();
   const importCounts = new Map<string, number>();
   for (const module of modules) {
-    const python = module.pythonImports !== undefined;
     for (const importPath of module.imports) {
-      // Python local imports have no `.` or `@/` marker, so their resolution status decides.
-      if (python && importResolutionStatus(module, importPath) !== 'external') continue;
-      if (!importPath.startsWith('.') && !importPath.startsWith('@/')) {
+      if (languageRegistry.forPath(module.path)?.isImportHotspot(module, importPath)) {
         importCounts.set(importPath, (importCounts.get(importPath) ?? 0) + 1);
       }
     }
@@ -1394,15 +820,11 @@ function buildInsights(
     .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.module.localeCompare(b.module)))
     .slice(0, 30);
   const boundaries: ProjectModel['insights']['boundaries'] = [];
-  const clientFiles = modules
-    .filter((module) => module.directives.includes('use client'))
-    .map((module) => module.path);
+  const clientFiles = facts.clientComponents;
   if (clientFiles.length > 0) {
     boundaries.push({ kind: 'client', files: clientFiles, evidence: 'use client directive' });
   }
-  const serverFiles = modules
-    .filter((module) => module.directives.includes('use server'))
-    .map((module) => module.path);
+  const serverFiles = facts.serverActions;
   if (serverFiles.length > 0) {
     boundaries.push({ kind: 'server', files: serverFiles, evidence: 'use server directive' });
   }
@@ -1448,42 +870,8 @@ function buildInsights(
     boundaries,
     layerEdges,
     dependencyEdges,
-    impactPaths: buildImpactPaths(
-      modules,
-      sourceFiles.filter((path) => /(?:^|\/)route\.[cm]?[jt]sx?$/.test(path)),
-      modules
-        .filter((module) => module.directives.includes('use server'))
-        .map((module) => module.path),
-    ),
-    envReferences: sourceFiles
-      .reduce<{ name: string; files: string[] }[]>((references, path) => {
-        const sourceFile = astProject.getSourceFile(resolve(root, path));
-        if (!sourceFile) return references;
-        const names = new Set<string>();
-        for (const access of sourceFile.getDescendantsOfKind(SyntaxKind.PropertyAccessExpression)) {
-          const expression = access.getExpression().getText();
-          const name = access.getName();
-          if (
-            (expression === 'process.env' || expression === 'env') &&
-            /^[A-Z][A-Z0-9_]*$/.test(name)
-          ) {
-            names.add(name);
-          }
-        }
-        for (const access of sourceFile.getDescendantsOfKind(SyntaxKind.ElementAccessExpression)) {
-          if (access.getExpression().getText() !== 'process.env') continue;
-          const argument = access.getArgumentExpression();
-          if (!argument?.isKind(SyntaxKind.StringLiteral)) continue;
-          const name = argument.getLiteralValue();
-          if (typeof name === 'string' && /^[A-Z][A-Z0-9_]*$/.test(name)) names.add(name);
-        }
-        for (const name of names) {
-          const reference = references.find((item) => item.name === name);
-          if (reference) reference.files.push(path);
-          else references.push({ name, files: [path] });
-        }
-        return references;
-      }, [])
+    impactPaths: buildImpactPaths(modules, facts.routeHandlers, facts.serverActions),
+    envReferences: facts.environmentReads
       .map((reference) => ({
         ...reference,
         files: [...new Set(reference.files)].sort(),
@@ -1501,38 +889,11 @@ function buildInsights(
   };
 }
 
-function createAstProject(root: string): Project {
-  const tsConfigPath = resolve(root, 'tsconfig.json');
-  try {
-    const project = existsSync(tsConfigPath)
-      ? new Project({ tsConfigFilePath: tsConfigPath })
-      : new Project({ skipAddingFilesFromTsConfig: true });
-    // Monorepos commonly keep compiler options and path aliases per package.
-    // Load those projects as well; files still remain bounded by listFiles().
-    for (const configPath of listFiles(root).filter((path) => basename(path) === 'tsconfig.json')) {
-      const absolutePath = resolve(root, configPath);
-      if (absolutePath === tsConfigPath) continue;
-      try {
-        project.addSourceFilesFromTsConfig(absolutePath);
-      } catch {
-        // A package config can be partial or reference an unavailable project.
-      }
-    }
-    return project;
-  } catch {
-    return new Project({ skipAddingFilesFromTsConfig: true });
-  }
-}
-
 function discoverProjectOnce(
   root: string,
   options: DiscoveryOptions = {},
   attempt = 0,
 ): ProjectModel {
-  const packageJson = readJsonObject(resolve(root, 'package.json'));
-  const dependencies = asStringRecord(packageJson.dependencies);
-  const devDependencies = asStringRecord(packageJson.devDependencies);
-  const scripts = asStringRecord(packageJson.scripts);
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
   if (!Number.isInteger(maxFiles) || maxFiles < 1) {
@@ -1557,7 +918,7 @@ function discoverProjectOnce(
       );
     }
   }
-  const signature = discoverySignature(root, packageJson, allFiles);
+  const signature = discoverySignature(root, allFiles);
   const cacheKey = resolve(root);
   discoveryCacheHits.set(cacheKey, false);
   const cached = discoveryCache.get(cacheKey);
@@ -1604,11 +965,28 @@ function discoverProjectOnce(
     bytes: statSync(resolve(root, path)).size,
   }));
   const projectFiles = new Set(files.map((file) => file.path));
-  const astProject = createAstProject(root);
-  const aliases = pathAliases(root);
-  const workspaces = workspacePackages(root, allFiles);
+  const metadata = ecosystemRegistry.readProject({ root, allFiles });
+  const { dependencies, devDependencies, scripts, packages: workspaces } = metadata;
   const workspaceNames = new Set(
     workspaces.flatMap((workspace) => (workspace.name ? [workspace.name] : [])),
+  );
+  const context = {
+    root,
+    allFiles,
+    projectFiles,
+    workspaceNames,
+    resolutionRoots: ecosystemRegistry.resolutionRoots(allFiles),
+  };
+  const sessions = new Map(
+    languageRegistry.backends
+      .filter((backend) =>
+        files.some(
+          (file) =>
+            languageRegistry.forPath(file.path) === backend &&
+            (file.kind === 'source' || file.kind === 'test'),
+        ),
+      )
+      .map((backend) => [backend, backend.createSession(context)]),
   );
   const previousModules = new Map(previousModel?.modules.map((module) => [module.path, module]));
   const currentFingerprint = resolutionFingerprint(root, allFiles);
@@ -1622,16 +1000,17 @@ function discoverProjectOnce(
         reusedModules += 1;
         return previous;
       }
-      return parseModule(astProject, root, file.path, projectFiles, aliases);
+      const backend = languageRegistry.forPath(file.path);
+      return backend ? sessions.get(backend)?.parseModule(file.path) : undefined;
     })
-    .filter((module): module is ModuleRecord => module !== undefined)
-    .map((module) => withImportStatus(module, projectFiles, aliases, workspaceNames));
-  const pythonIndex = modules.some((module) => module.pythonImports !== undefined)
-    ? pythonResolutionIndex(allFiles, pythonProjectRoots(allFiles))
-    : undefined;
-  if (pythonIndex) {
-    modules = modules.map((module) => withPythonResolution(module, pythonIndex));
-  }
+    .filter((module): module is ModuleRecord => module !== undefined);
+  const resolved = new Map<string, ModuleRecord>();
+  for (const [backend, session] of sessions)
+    for (const module of session.resolveModules(
+      modules.filter((candidate) => languageRegistry.forPath(candidate.path) === backend),
+    ))
+      resolved.set(module.path, module);
+  modules = modules.map((module) => resolved.get(module.path) ?? module);
   const sourceFiles = files.filter((file) => file.kind === 'source').map((file) => file.path);
   const testFiles = files.filter((file) => file.kind === 'test').map((file) => file.path);
   const configs = files.filter((file) => file.kind === 'config').map((file) => file.path);
@@ -1639,33 +1018,40 @@ function discoverProjectOnce(
   const testScripts = Object.fromEntries(
     Object.entries(scripts).filter(([name]) => /test|check|lint|type/.test(name)),
   );
-  const routeDetails = sourceFiles
-    .filter((path) => /(?:^|\/)route\.[cm]?[jt]sx?$/.test(path))
-    .map((path) => {
-      const sourceFile = astProject.getSourceFile(resolve(root, path));
-      const methods = new Set<string>();
-      for (const declaration of sourceFile?.getFunctions() ?? []) {
-        const name = declaration.getName();
-        if (declaration.isExported() && name && HTTP_METHODS.has(name)) methods.add(name);
-      }
-      for (const statement of sourceFile?.getVariableStatements() ?? []) {
-        if (!statement.isExported()) continue;
-        for (const declaration of statement.getDeclarations()) {
-          const name = declaration.getName();
-          if (HTTP_METHODS.has(name)) methods.add(name);
-        }
-      }
-      for (const name of sourceFile?.getExportedDeclarations().keys() ?? []) {
-        if (HTTP_METHODS.has(name)) methods.add(name);
-      }
-      return { path, methods: [...methods].sort() };
-    });
-  const detectedPackageManager = packageManager(root);
+  const facts: LanguageProjectFacts = {
+    routeHandlers: [],
+    routeDetails: [],
+    barrelFiles: [],
+    serverActions: [],
+    clientComponents: [],
+    environmentReads: [],
+  };
+  for (const [backend, session] of sessions) {
+    const next = session.projectFacts(
+      modules.filter((module) => languageRegistry.forPath(module.path) === backend),
+      sourceFiles.filter((path) => languageRegistry.forPath(path) === backend),
+    );
+    facts.routeHandlers.push(...next.routeHandlers);
+    facts.routeDetails.push(...next.routeDetails);
+    facts.barrelFiles.push(...next.barrelFiles);
+    facts.serverActions.push(...next.serverActions);
+    facts.clientComponents.push(...next.clientComponents);
+    for (const read of next.environmentReads) {
+      const existing = facts.environmentReads.find((item) => item.name === read.name);
+      if (existing) existing.files.push(...read.files);
+      else facts.environmentReads.push({ ...read, files: [...read.files] });
+    }
+  }
+  facts.routeHandlers.sort();
+  facts.routeDetails.sort((a, b) => (a.path === b.path ? 0 : a.path < b.path ? -1 : 1));
+  facts.barrelFiles.sort();
+  facts.serverActions.sort();
+  facts.clientComponents.sort();
   const model: ProjectModel = {
     version: 1,
     project: {
-      ...(typeof packageJson.name === 'string' ? { name: packageJson.name } : {}),
-      ...(detectedPackageManager ? { packageManager: detectedPackageManager } : {}),
+      ...(metadata.name !== undefined ? { name: metadata.name } : {}),
+      ...(metadata.packageManager ? { packageManager: metadata.packageManager } : {}),
       frameworks: inferFrameworks(dependencies, devDependencies),
       scripts,
       dependencies,
@@ -1680,24 +1066,18 @@ function discoverProjectOnce(
     capabilities: detectCapabilities(files, modules, dependencies, devDependencies, scripts),
     git: gitModel(root),
     patterns: {
-      clientComponents: modules
-        .filter((module) => module.directives.includes('use client'))
-        .map((module) => module.path),
-      serverActions: modules
-        .filter((module) => module.directives.includes('use server'))
-        .map((module) => module.path),
-      routeHandlers: sourceFiles.filter((path) => /(?:^|\/)route\.[cm]?[jt]sx?$/.test(path)),
-      routeDetails,
-      barrelFiles: sourceFiles.filter((path) => /(?:^|\/)index\.[cm]?[jt]s$/.test(path)),
+      clientComponents: facts.clientComponents,
+      serverActions: facts.serverActions,
+      routeHandlers: facts.routeHandlers,
+      routeDetails: facts.routeDetails,
+      barrelFiles: facts.barrelFiles,
       importGraphEdges: modules.reduce((count, module) => count + module.imports.length, 0),
     },
-    insights: buildInsights(root, files, modules, sourceFiles, dependencies, astProject),
+    insights: buildInsights(root, files, modules, dependencies, facts),
   };
   const finalFiles = listFiles(root, root, maxFiles);
   const finalSignature =
-    finalFiles.length <= maxFiles
-      ? discoverySignature(root, readJsonObject(resolve(root, 'package.json')), finalFiles)
-      : undefined;
+    finalFiles.length <= maxFiles ? discoverySignature(root, finalFiles) : undefined;
   if (finalSignature !== signature) {
     if (attempt < 2) return discoverProjectOnce(root, options, attempt + 1);
     throw new DiscoveryStaleError();

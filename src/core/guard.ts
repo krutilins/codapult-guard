@@ -22,7 +22,6 @@ import {
   collectedFacts,
   type ModuleFact,
   type ProjectModel,
-  sourceLanguage,
 } from './discovery/discovery.js';
 import {
   clearDiscoveryCache,
@@ -30,6 +29,7 @@ import {
   discoverProjectWithMetrics,
   findGuardRoot,
 } from './discovery/discovery.js';
+import { languageRegistry } from './languages/index.js';
 import { config } from './config.js';
 import { assessGuardPacks, detectGuardPacks } from './analysis/packs.js';
 import { analyzeProjectImpact, type GuardImpactAnalysis } from './analysis/impact.js';
@@ -2130,13 +2130,6 @@ function patternMatches(importPath: string, pattern: string): boolean {
     : importPath === pattern || importPath.startsWith(`${pattern}/`);
 }
 
-/** Python module names also treat `.` as a segment boundary (D7). A trailing `*` stays a raw prefix. */
-function pythonNameMatches(name: string, pattern: string): boolean {
-  return (
-    patternMatches(name, pattern) || (!pattern.endsWith('*') && name.startsWith(`${pattern}.`))
-  );
-}
-
 function ruleAppliesToFile(rule: GuardRule, file: string): boolean {
   return (
     !rule.files || rule.files.some((prefix) => file === prefix || file.startsWith(`${prefix}/`))
@@ -2159,37 +2152,40 @@ function contractAppliesToFile(contract: GuardContract, file: string): boolean {
 interface ModuleImportReference {
   source: string;
   resolved?: string | undefined;
-  /** Absolute dotted name of a relative Python import, stored by discovery (D9). */
+  /** Canonical source name supplied by the owning backend. */
   canonical?: string | undefined;
-  python: boolean;
+  matches: (pattern: string) => boolean;
   line: number;
 }
 
 function moduleImportReferences(module: ProjectModel['modules'][number]): ModuleImportReference[] {
   const sources = [...new Set([...module.imports, ...module.exports, ...module.dynamicImports])];
-  const python = sourceLanguage(module.path) === 'python';
+  const backend = languageRegistry.forPath(module.path);
   return sources.map((source) => ({
     source,
     resolved: module.resolvedImportMap?.[source],
     canonical: module.canonicalImports?.[source],
-    python,
+    matches: (pattern) =>
+      backend?.referenceMatches(
+        {
+          source,
+          canonical: module.canonicalImports?.[source],
+          line: module.importLines?.[source] ?? 1,
+        },
+        pattern,
+      ) ?? patternMatches(source, pattern),
     // Models persisted before import lines were recorded fall back to the file start.
     line: module.importLines?.[source] ?? 1,
   }));
 }
 
 /**
- * Whether an import pattern matches a reference. JS/TS references match by spelling or resolved
- * path. Python references also match by their canonical dotted name, and dotted names use `.` as
- * a segment boundary (D7). Resolved paths keep path semantics in every language.
+ * Match resolved paths using shared path semantics, then delegate source-name semantics to the
+ * owning backend. Canonical source names, when available, are interpreted by that backend.
  */
 function referenceMatches(reference: ModuleImportReference, pattern: string): boolean {
   if (reference.resolved !== undefined && patternMatches(reference.resolved, pattern)) return true;
-  if (!reference.python) return patternMatches(reference.source, pattern);
-  return (
-    pythonNameMatches(reference.source, pattern) ||
-    (reference.canonical !== undefined && pythonNameMatches(reference.canonical, pattern))
-  );
+  return reference.matches(pattern);
 }
 
 function packageSelectorMatches(value: string | undefined, selector: string): boolean {
@@ -2236,9 +2232,8 @@ const REQUIRED_FACTS: Record<GuardRuleKind | Exclude<GuardContractKind, 'guidanc
 const MISSING_FACT_REASONS: Record<ModuleFact, string> = {
   imports: 'Discovery does not collect imports for these modules.',
   calls: 'Discovery does not collect calls for these modules.',
-  directives: 'Discovery does not collect directives such as "use client" for these modules.',
-  packages:
-    'Package membership comes from package.json workspaces, which do not cover these modules.',
+  directives: 'Discovery does not collect directives for these modules.',
+  packages: 'Discovery does not collect package membership for these modules.',
 };
 
 /** The fact a check needs that discovery does not collect for this module, if any. */

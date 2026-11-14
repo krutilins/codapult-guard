@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pythonProjectRoots } from './discovery.js';
+import { pythonProjectRoots } from '../../discovery/discovery.js';
 import { parsePythonSource } from './python-imports.js';
 import {
   pythonResolutionIndex,

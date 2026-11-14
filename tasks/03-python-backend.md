@@ -4,7 +4,7 @@
 **Estimate:** 1–2 days  
 **Depends on:** Task 02  
 **Commit:** `refactor(languages): move Python analysis into its backend`  
-**Status:** Not started
+**Status:** Done (2026-11-14). See [implementation and validation evidence](00-08-validation.md).
 
 ## Goal
 

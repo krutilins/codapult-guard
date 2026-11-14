@@ -4,12 +4,19 @@
 
 ### Features
 
+* **architecture:** internal static language backends and ecosystem providers isolate parsing, resolution, enrichment, manifest metadata, and project conventions. Parsers load synchronously only when needed; Python-only analysis no longer creates or loads a TypeScript AST project. Conformance and architecture-boundary tests cover both implementations and test-only third implementations.
+
+
 * **python:** discover and analyze Python projects without a Python interpreter. Guard parses `.py` files with `@lezer/python`, resolves static imports (relative imports, `src/` layouts, nested projects, and namespace packages) into the shared graph, and applies `forbidden-import` rules, `import-boundary` contracts, and budgets to Python modules. See `docs/guard.md#python-projects`.
 * **report:** checks that need facts a module lacks, such as `required-call` on a Python module, are listed under `notApplicable` in JSON and MCP output, printed by `check` and `audit`, and written to SARIF as `invocations[0].toolExecutionNotifications`. They never change the exit code.
 * **model:** modules record `unresolvedImports`, and `insights.importResolution` summarizes resolved, unresolved, and external imports per language.
 * **impact:** impact results include `graph.status` (`complete` or `partial`) with the unresolved imports of affected modules. `doctor` prints the import summary.
 
 ### Behavior changes
+
+* **model:** replace the Python-specific `ModuleRecord.pythonImports` field with opaque `parseFacts`, owned by the language backend. Public language IDs and discovery exports remain unchanged. Discovery cache version 9 rejects old cache entries; changed Python model fingerprints make previously stored proposals stale once.
+* **report:** not-applicable explanations for directives and package membership now use language-neutral wording; their counts and applicability are unchanged.
+
 
 * **root:** Guard now also stops at the nearest directory with `pyproject.toml`, `setup.cfg`, or `setup.py` when it looks for the project root. Running Guard inside a nested Python project uses that project as the root.
 * **policy surface:** `pyproject.toml`, `setup.cfg`, and `setup.py` are now built-in protected paths at any depth, because they decide the project root. Changing one is reported in `policySurface` and fails `verify --fail-on-protected-changes`.

@@ -580,7 +580,35 @@ export const key = process.env['API_KEY'];
     writeFileSync(join(root, 'package.json'), '{\n  "name": "cache",\n  "scripts": {}\n}\n');
     discoverProject(root);
     const refreshedCache = JSON.parse(readFileSync(cachePath, 'utf8')) as { version?: unknown };
-    expect(refreshedCache.version).toBe(8);
+    expect(refreshedCache.version).toBe(9);
+  });
+
+  it('rejects version 8 Python caches instead of reusing legacy parser fields', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-cache-version-'));
+    roots.push(root);
+    mkdirSync(join(root, '.codapult/guard'), { recursive: true });
+    writeFileSync(join(root, 'main.py'), 'import os\n');
+    discoverProject(root, { persistCache: true });
+    const path = join(root, '.codapult/guard/cache.json');
+    const cache = JSON.parse(readFileSync(path, 'utf8')) as {
+      version: number;
+      model: ProjectModel;
+    };
+    cache.version = 8;
+    cache.model.modules = cache.model.modules.map(({ parseFacts, ...module }) => ({
+      ...module,
+      pythonImports: parseFacts,
+    }));
+    writeFileSync(path, JSON.stringify(cache));
+    vi.resetModules();
+    const fresh = await import('./discovery.js');
+    const result = fresh.discoverProjectWithMetrics(root, { persistCache: true });
+    expect(result.metrics.cacheHit).toBe(false);
+    expect(result.metrics.reusedModules).toBe(0);
+    expect(result.model.modules[0]).toHaveProperty('parseFacts', [{ module: 'os', line: 1 }]);
+    expect(result.model.modules[0]).not.toHaveProperty('pythonImports');
+    const rebuilt = JSON.parse(readFileSync(path, 'utf8')) as { version?: unknown };
+    expect(rebuilt.version).toBe(9);
   });
 
   it('does not persist discovery cache through a symlinked Guard directory', () => {
@@ -1029,7 +1057,7 @@ describe('Python module parsing', () => {
       directives: [],
       declarations: { classes: 1, functions: 1, interfaces: 0, types: 0, variables: 1 },
     });
-    expect(views?.pythonImports).toEqual([
+    expect(views?.parseFacts).toEqual([
       { module: '__future__', names: ['annotations'], line: 1 },
       { module: 'os.path', line: 2 },
       { module: '.db', names: ['models', 'session'], line: 3 },
@@ -1074,7 +1102,7 @@ describe('Python module parsing', () => {
     });
     vi.resetModules();
     const discovery = await import('./discovery.js');
-    const parser = await import('./python-imports.js');
+    const parser = await import('../languages/python/python-imports.js');
 
     discovery.discoverProject(root, { persistCache: false });
     expect(parser.isPythonParserLoaded()).toBe(false);

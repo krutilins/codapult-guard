@@ -1,8 +1,11 @@
 # Language-agnostic architecture plan
 
-**Status:** Proposed, 2026-11-06  
+**Status:** In progress. Tasks 00–08 completed on 2026-11-14; tasks 09–19 remain.
+
 **Starting point:** the Python MVP is complete and merged with main (see [tasks/python-support-plan.md](tasks/python-support-plan.md))  
 **Tasks:** one file per commit in [tasks/](tasks/), indexed under [Work breakdown](#work-breakdown)
+
+Tasks 00–08 implementation and validation are recorded in [the foundation report](tasks/00-08-validation.md). The original starting-state inventory below is retained as context.
 
 ## Goal
 
@@ -24,7 +27,7 @@ The Python plan said: "Do not introduce an abstract backend interface or plugin 
 
 Doing this first matters for cost. Every remaining Python feature would otherwise add more language branches to `discovery.ts` and `guard.ts`, which would then need to be moved later.
 
-## Current state
+## Starting state (before tasks 00–08)
 
 The Python MVP keeps most language logic in `python-imports.ts` and `python-resolution.ts`, and policy applicability already uses the fact table. These places still depend on language or ecosystem:
 
@@ -75,7 +78,7 @@ These continue the numbering of [the Python decision record](tasks/python-suppor
 | D21 | No public plugin API or dynamic loading. Registries are static.                                                                                                                                                | Loading third-party code would conflict with the rule that Guard never executes untrusted code during analysis. Revisit on real demand.                                    |
 | D22 | Backends stay synchronous and load their parser lazily.                                                                                                                                                        | `discoverProject` is synchronous (D1), and D13 requires TS-only runs to pay nothing for other parsers. An async parser for a future language would be a separate decision. |
 | D23 | Applicability stays fact-based. Backends declare the facts they collect, and checks declare the facts they need (extends D17).                                                                                 | Policy code never needs a language name, and the fake language tests this.                                                                                                 |
-| D24 | Model changes are additive. Language IDs `js-ts` and `python` stay stable, and `src/index.ts` keeps its current exports.                                                                                       | These appear in JSON output, and `discovery.ts` is exported publicly through `export *`.                                                                                   |
+| D24 | Model changes are additive except the accepted `pythonImports` → `parseFacts` replacement in Task 03. Language IDs `js-ts` and `python` stay stable, and `src/index.ts` keeps its current exports.             | These appear in JSON output, and `discovery.ts` is exported publicly through `export *`.                                                                                   |
 | D25 | Reverses C2: add `smol-toml` and read `pyproject.toml`, `setup.cfg`, and `requirements*.txt` as data. `setup.py` is never parsed or executed.                                                                  | Dependencies and package boundaries both need it. The no-execution rule stays.                                                                                             |
 | D26 | Reverses C1: extract Python calls, using the same dotted-callee filter as JS/TS. When a module has parse diagnostics and a required call is missing, it is reported as not applicable instead of as a finding. | A missing call in an error-recovered region would otherwise be a false positive.                                                                                           |
 | D27 | Python project checks run only from explicit configuration. Guard never infers commands from project files.                                                                                                    | Answers the open question in Python Task 09, and matches the trusted-CI model from main.                                                                                   |
@@ -102,15 +105,15 @@ Each task is one commit that keeps all gates green. Python task IDs in `tasks/py
 
 | ID  | Task                                                                                             | Depends on | Estimate | Status      |
 | --- | ------------------------------------------------------------------------------------------------ | ---------- | -------- | ----------- |
-| 00  | [Record decisions and clean up references](tasks/00-record-decisions.md)                         | None       | 0.5 day  | Not started |
-| 01  | [Add a model baseline for all fixtures](tasks/01-model-baseline.md)                              | None       | 1 day    | Not started |
-| 02  | [Add the backend interface and move file classification](tasks/02-language-backend-interface.md) | 01         | 1–2 days | Not started |
-| 03  | [Move Python behind its backend](tasks/03-python-backend.md)                                     | 02         | 1–2 days | Not started |
-| 04  | [Move JS/TS parsing and resolution behind its backend](tasks/04-js-ts-backend.md)                | 02         | 2–3 days | Not started |
-| 05  | [Move JS/TS AST enrichment behind its backend](tasks/05-js-ts-enrichment.md)                     | 04         | 1–2 days | Not started |
-| 06  | [Remove language branches from shared code](tasks/06-neutral-consumers.md)                       | 03, 05     | 1–2 days | Not started |
-| 07  | [Add the conformance suite and boundary test](tasks/07-language-conformance.md)                  | 06         | 1 day    | Not started |
-| 08  | [Add the ecosystem interface and extract npm](tasks/08-ecosystem-provider.md)                    | 07         | 2–3 days | Not started |
+| 00  | [Record decisions and clean up references](tasks/00-record-decisions.md)                         | None       | 0.5 day  | Done        |
+| 01  | [Add a model baseline for all fixtures](tasks/01-model-baseline.md)                              | None       | 1 day    | Done        |
+| 02  | [Add the backend interface and move file classification](tasks/02-language-backend-interface.md) | 01         | 1–2 days | Done        |
+| 03  | [Move Python behind its backend](tasks/03-python-backend.md)                                     | 02         | 1–2 days | Done        |
+| 04  | [Move JS/TS parsing and resolution behind its backend](tasks/04-js-ts-backend.md)                | 02         | 2–3 days | Done        |
+| 05  | [Move JS/TS AST enrichment behind its backend](tasks/05-js-ts-enrichment.md)                     | 04         | 1–2 days | Done        |
+| 06  | [Remove language branches from shared code](tasks/06-neutral-consumers.md)                       | 03, 05     | 1–2 days | Done        |
+| 07  | [Add the conformance suite and boundary test](tasks/07-language-conformance.md)                  | 06         | 1 day    | Done        |
+| 08  | [Add the ecosystem interface and extract npm](tasks/08-ecosystem-provider.md)                    | 07         | 2–3 days | Done        |
 | 09  | [Read Python manifests](tasks/09-python-manifests.md)                                            | 08         | 2–3 days | Not started |
 | 10  | [Support `package-boundary` on Python](tasks/10-python-package-boundary.md)                      | 09         | 1–2 days | Not started |
 | 11  | [Move protected paths into ecosystems](tasks/11-protected-paths.md)                              | 08         | 1 day    | Not started |
@@ -153,9 +156,9 @@ Each task is one commit that keeps all gates green. Python task IDs in `tasks/py
 
 Backlog items from the Python plan that stay deferred: classifying imports as runtime, type-only, or conditional, and resolving JS/TS workspace imports without `node_modules`.
 
-## Open questions
+## Accepted defaults
 
-Each has a working default, so none blocks the start.
+The defaults below are accepted in D20–D28; none remains open.
 
 1. **Parse diagnostics and `required-call` (D26).** The default reports not applicable. The stricter option reports a finding and accepts false positives on files the parser can't fully read.
 2. **Distribution for Python teams (Task 18).** The default is a pinned `npx` command in CI with Node set up by the workflow. A PyPI wrapper or a standalone binary would remove the Node step, at a real maintenance cost, so both are deferred until users ask.

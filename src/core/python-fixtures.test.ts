@@ -241,13 +241,12 @@ describe('Python fixtures', () => {
     expect(report.notApplicable).toEqual([
       {
         ruleId: 'client-no-db',
-        reason: 'Discovery does not collect directives such as "use client" for these modules.',
+        reason: 'Discovery does not collect directives for these modules.',
         modules: 9,
       },
       {
         ruleId: 'contract:no-db-package',
-        reason:
-          'Package membership comes from package.json workspaces, which do not cover these modules.',
+        reason: 'Discovery does not collect package membership for these modules.',
         modules: 11,
       },
       {

@@ -4,7 +4,7 @@
 **Estimate:** 1 day  
 **Depends on:** None  
 **Commit:** `test(discovery): add model baseline for all fixtures`  
-**Status:** Not started
+**Status:** Done (2026-11-14). See [implementation and validation evidence](00-08-validation.md).
 
 ## Goal
 

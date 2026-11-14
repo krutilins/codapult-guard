@@ -4,7 +4,7 @@
 **Estimate:** 2–3 days  
 **Depends on:** Task 07  
 **Commit:** `refactor(ecosystems): extract npm project metadata`  
-**Status:** Not started
+**Status:** Done (2026-11-14). See [implementation and validation evidence](00-08-validation.md).
 
 ## Goal
 
@@ -48,4 +48,4 @@ Moved or changed:
 
 - The model baseline is unchanged.
 - A fake ecosystem in the conformance suite adds a manifest and a package with no change outside its test file.
-- `discovery.ts` reads no manifest directly.
+- `discovery.ts` reads no manifest directly. The metadata reader used by the project-check adapter also delegates to the registry; command selection and execution remain for Task 17.

@@ -4,6 +4,8 @@
 **Priority:** Post-MVP, not a blocker  
 **Estimate:** 3–7+ days after design
 
+**Status:** Replaced by [Task 17](../17-project-checks.md), following D27.
+
 ## Goal
 
 Decide whether Guard should run existing Python project checks as an optional completion gate, without coupling that feature to static Python discovery.

@@ -1,0 +1,84 @@
+import { basename } from 'node:path';
+import { npmEcosystem } from './npm/index.js';
+import { pythonEcosystem } from './python/index.js';
+import type {
+  EcosystemContext,
+  EcosystemProvider,
+  EcosystemProject,
+  ProjectCheckMetadata,
+  ResolutionInput,
+} from './types.js';
+export { pythonProjectRoots } from './python/index.js';
+export type { EcosystemProvider, EcosystemContext, EcosystemProject } from './types.js';
+export interface EcosystemRegistry {
+  rootMarkers: string[];
+  ignoredDirectory(name: string): boolean;
+  isConfigFile(path: string): boolean;
+  resolutionInput(path: string): ResolutionInput;
+  signatureInputs(context: EcosystemContext): unknown[];
+  resolutionRoots(paths: string[]): Record<string, string[]>;
+  readCheckMetadata(root: string): ProjectCheckMetadata;
+  readProject(context: EcosystemContext): EcosystemProject;
+}
+export function createEcosystemRegistry(
+  providers: readonly EcosystemProvider[],
+): EcosystemRegistry {
+  return {
+    rootMarkers: [...new Set(providers.flatMap((provider) => provider.rootMarkers))],
+    ignoredDirectory(name: string): boolean {
+      return providers.some(
+        (provider) =>
+          provider.ignoredDirectories.includes(name) ||
+          provider.ignoredDirectorySuffixes?.some((suffix) => name.endsWith(suffix)),
+      );
+    },
+    isConfigFile(path: string): boolean {
+      const name = basename(path).toLowerCase();
+      return providers.some(
+        (provider) => provider.configFileNames.includes(name) || provider.isConfigFile?.(name),
+      );
+    },
+    resolutionInput(path: string) {
+      const inputs = providers.map((provider) => provider.resolutionInput?.(path));
+      return inputs.includes('content') ? 'content' : inputs.includes('path') ? 'path' : undefined;
+    },
+    signatureInputs(context: EcosystemContext): unknown[] {
+      return providers.flatMap((provider) =>
+        provider.signatureInput === undefined ? [] : [provider.signatureInput(context)],
+      );
+    },
+    resolutionRoots(paths: string[]): Record<string, string[]> {
+      const result: Record<string, string[]> = {};
+      for (const provider of providers)
+        for (const [language, roots] of Object.entries(provider.resolutionRoots?.(paths) ?? {}))
+          result[language] = [...new Set([...(result[language] ?? []), ...roots])].sort();
+      return result;
+    },
+    readCheckMetadata(root: string): ProjectCheckMetadata {
+      for (const provider of providers)
+        if (provider.readCheckMetadata !== undefined) return provider.readCheckMetadata(root);
+      return {};
+    },
+    readProject(context: EcosystemContext): EcosystemProject {
+      const projects = providers.flatMap((provider) => {
+        const project = provider.readProject(context);
+        return project ? [project] : [];
+      });
+      // Registry order preserves root npm metadata precedence. Additional providers contribute packages.
+      const primary = projects.at(0);
+      return {
+        ...(primary?.name !== undefined ? { name: primary.name } : {}),
+        ...(primary?.packageManager !== undefined
+          ? { packageManager: primary.packageManager }
+          : {}),
+        dependencies: primary?.dependencies ?? {},
+        devDependencies: primary?.devDependencies ?? {},
+        scripts: primary?.scripts ?? {},
+        packages: projects
+          .flatMap((project) => project.packages)
+          .sort((a, b) => a.path.localeCompare(b.path)),
+      };
+    },
+  };
+}
+export const ecosystemRegistry = createEcosystemRegistry([npmEcosystem, pythonEcosystem]);

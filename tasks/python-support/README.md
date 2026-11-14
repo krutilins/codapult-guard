@@ -1,6 +1,6 @@
 # Python support tasks
 
-This folder breaks down the implementation described in [Python support implementation plan](../python-support-plan.md). Decisions are in the [decision record](../python-support-decisions.md). Tasks with a decimal ID (02.1, 06.1, and so on) came from the [plan review](../plan-review.md); the decision record lists which review points were adopted and why.
+This folder breaks down the implementation described in [Python support implementation plan](../python-support-plan.md). Decisions are in the [decision record](../python-support-decisions.md). Tasks with a decimal ID (02.1, 06.1, and so on) came from the historical plan review; the decision record lists which review points were adopted and why.
 
 ## MVP sequence
 
@@ -27,13 +27,13 @@ Tasks 02.1 and 02.2 change JS/TS behavior only and can be done in either order b
 
 ## Post-MVP
 
-- [09: Add optional Python project checks](09-python-project-checks-post-mvp.md) is deliberately separate and is not required for the static-analysis MVP.
-- Backlog without task files yet:
-  - `required-call` for Python (C1 alternative, needs call extraction and a policy for modules with parse diagnostics);
-  - Python `package-boundary` based on explicit package roots (C2 alternative, needs TOML parsing);
+- [09: Add optional Python project checks](09-python-project-checks-post-mvp.md) is deliberately separate from the MVP; it is replaced by [Task 17](../17-project-checks.md), using D27.
+- Follow-up work (new task IDs are separate from the Python MVP IDs):
+  - [`required-call` for Python](../12-python-calls.md) (D26);
+  - [Python manifests](../09-python-manifests.md) and [`package-boundary`](../10-python-package-boundary.md) (D25);
   - classifying imports as runtime, type-only, or conditional, for both languages;
-  - Python entrypoints for `insights.impactPaths`, Python capability and framework detection;
-  - a general capability model for rules, if a third language is added (the fact table from Task 06.1 is the starting point);
+  - [Python entrypoints](../15-python-entrypoints.md) and [framework/capability signals](../14-signal-tables.md);
+  - [language backends](../02-language-backend-interface.md) and [conformance tests](../07-language-conformance.md), retaining fact-based applicability;
   - resolving JS/TS workspace package imports to package sources without installed `node_modules` (184 unresolved imports in the changesets fixture, D16).
 
 ## Definition of done

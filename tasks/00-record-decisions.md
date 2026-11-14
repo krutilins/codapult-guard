@@ -4,7 +4,7 @@
 **Estimate:** 0.5 day  
 **Depends on:** None  
 **Commit:** `docs(tasks): record language-agnostic decisions`  
-**Status:** Not started
+**Status:** Done (2026-11-14). See [implementation and validation evidence](00-08-validation.md).
 
 ## Goal
 

@@ -4,7 +4,7 @@
 **Estimate:** 2–3 days, the largest refactor in this phase  
 **Depends on:** Task 02  
 **Commit:** `refactor(languages): move JS/TS parsing into its backend`  
-**Status:** Not started
+**Status:** Done (2026-11-14). See [implementation and validation evidence](00-08-validation.md).
 
 ## Goal
 

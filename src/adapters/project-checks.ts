@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { ecosystemRegistry } from '../core/ecosystems/index.js';
 import { runProjectCommand, type CommandResult } from './command.js';
 import type { GuardAdapterName, GuardToolMode, ProjectCheck } from '../core/model/types.js';
 
@@ -57,11 +58,7 @@ function notConfigured(check: string): CommandResult {
 }
 
 function readPackageMetadata(root: string): PackageMetadata {
-  try {
-    return JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as PackageMetadata;
-  } catch {
-    return {};
-  }
+  return ecosystemRegistry.readCheckMetadata(root);
 }
 
 function packageManager(root: string, declared?: string): string {

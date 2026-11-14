@@ -10,12 +10,12 @@ This record fixes the parser choice and the behavior that later tasks implement 
 
 These decisions change what users get from the MVP. The recommended option was confirmed for each one. Changing any of them later affects Tasks 03–06.
 
-| ID  | Decision                            | Confirmed                                                                                         | Alternative                                                                     |
-| --- | ----------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| C1  | `required-call` contracts on Python | Skip Python modules; no call extraction in MVP                                                    | Extract calls in Task 04 and evaluate `required-call` (about +1–2 days, see D4) |
-| C2  | `pyproject.toml` parsing            | No TOML parsing in MVP; `package-boundary` skips Python; `init` does not read Python dependencies | Add `smol-toml` and read `[project]` name and dependencies (about +2–3 days)    |
-| C3  | `if TYPE_CHECKING:` imports         | Treat like any other import, matching how TS `import type` is handled today                       | Exclude them from graph edges and cycles                                        |
-| C4  | Python markers in `findGuardRoot`   | Add `pyproject.toml`, `setup.cfg`, `setup.py` as root markers                                     | Only use them for Python resolution roots, keep `findGuardRoot` unchanged       |
+| ID  | Decision                            | Confirmed                                                                                                                         | Alternative                                                                     |
+| --- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| C1  | `required-call` contracts on Python | Skip Python modules; no call extraction in MVP (superseded by D26 for Task 12)                                                    | Extract calls in Task 04 and evaluate `required-call` (about +1–2 days, see D4) |
+| C2  | `pyproject.toml` parsing            | No TOML parsing in MVP; `package-boundary` skips Python; `init` does not read Python dependencies (superseded by D25 for Task 09) | Add `smol-toml` and read `[project]` name and dependencies (about +2–3 days)    |
+| C3  | `if TYPE_CHECKING:` imports         | Treat like any other import, matching how TS `import type` is handled today                                                       | Exclude them from graph edges and cycles                                        |
+| C4  | Python markers in `findGuardRoot`   | Add `pyproject.toml`, `setup.cfg`, `setup.py` as root markers                                                                     | Only use them for Python resolution roots, keep `findGuardRoot` unchanged       |
 
 ## D1: Parser
 
@@ -332,7 +332,7 @@ Python: Flask has 83 modules, 505 imports, 197 resolved, 0 unresolved, 308 exter
 
 ## Plan review response
 
-The [plan review](plan-review.md) was checked against this record and the code on 2026-10-18.
+The historical plan review was checked against this record and the code on 2026-10-18.
 
 **Adopted:**
 
@@ -373,3 +373,24 @@ The confirmed C1 and C2 options narrow Tasks 03, 04, and 06: no TOML parsing, no
 4. Compare row sets per file, count error nodes, and time the parse and extraction.
 
 Task 04 should turn the targeted cases from D1 (bare `yield`, `with ... as (a, b)`, PEP 646, invalid syntax, t-strings, `lazy import`) into unit tests.
+
+## Language and ecosystem architecture decisions (D20–D28)
+
+Accepted for tasks 00–08. C1 and C2 describe the completed MVP and are superseded
+for future feature work by D26 and D25; their runtime behavior remains until those tasks land.
+
+| ID  | Decision                                                                                                                                                                                                         |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D20 | Extract internal LanguageBackend and EcosystemProvider interfaces from the two existing implementations. Supersedes the original no-interface restriction.                                                       |
+| D21 | Static internal registries only; no public plugin API or dynamic loading.                                                                                                                                        |
+| D22 | Synchronous backends with lazy parser loading and per-discovery sessions.                                                                                                                                        |
+| D23 | Applicability remains fact-based; checks declare required facts.                                                                                                                                                 |
+| D24 | Preserve public exports, language IDs and project metadata. The accepted exception is replacing ModuleRecord.pythonImports with parseFacts, without an alias; invalidate caches and document proposal staleness. |
+| D25 | Supersedes C2 in Task 09: read Python manifests as data; never interpret or execute setup.py for metadata (normal static source analysis remains enabled).                                                       |
+| D26 | Supersedes C1 in Task 12: collect dotted calls; a missing required call with parse diagnostics reports not applicable.                                                                                           |
+| D27 | Task 17 runs Python checks only from explicit trusted configuration, never inferred commands.                                                                                                                    |
+| D28 | Preserve D19: no dependency edges across languages.                                                                                                                                                              |
+
+Accepted defaults from PLAN.md: incomplete Python call analysis reports not applicable;
+Python-only installation uses pinned npx with Node; later framework support targets
+FastAPI, Flask and Django. These decisions do not enable the later features in tasks 00–08.

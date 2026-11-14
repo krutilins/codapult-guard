@@ -1,6 +1,7 @@
 # Python support implementation plan
 
-**Status:** Accepted, revised after the [plan review](plan-review.md) on 2026-10-18  
+**Status:** Accepted, revised after the historical plan review on 2026-10-18.
+
 **Scope:** Add Python source analysis to Codapult Guard while retaining its shared project model and policy engine.
 
 ## Objective
@@ -71,7 +72,7 @@ The architecture change is small and concrete:
 7. Keep parse facts and resolution results on separate lifetimes: JS/TS reuse is gated by a resolution-input fingerprint, and Python resolution reruns on every discovery.
 8. Decide rule applicability from the facts a language collects, through one table in discovery, not from language names in policy code.
 
-Do not introduce an abstract backend interface or plugin system. If a third language is added later, extract an interface from the two concrete implementations at that point.
+Historical MVP restriction (superseded by [D20](python-support-decisions.md) for internal interfaces; D21 still excludes a public plugin system): do not introduce an abstract backend interface or plugin system. If a third language is added later, extract an interface from the two concrete implementations at that point.
 
 ## Proposed phases and sequencing
 
