@@ -1,8 +1,9 @@
 name: CI
 
 on:
-  pull_request:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
 
 permissions:
@@ -37,6 +38,7 @@ jobs:
           "$RUNNER_TEMP/actionlint" \
             .github/workflows/*.yml \
             docs/guard-ci.yml \
+            docs/guard-ci-python.yml \
             docs/guard-trusted-pr-attestation.yml \
             docs/guard-trusted-merge-group.yml
 

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GUARD_DIR, defaultGuardAgentConfig, isGuardAgentConfig } from '../guard.js';
+import { guardReceiptToInToto } from '../output/attestation.js';
 import { runGuardVerification } from './verify.js';
 
 const roots: string[] = [];
@@ -182,6 +183,8 @@ describe('runGuardVerification', () => {
       stages: { 'project-checks': 'skipped', adapters: 'skipped' },
       checks: {},
     });
+    expect(result.run.receipt?.subject.workingTreeDirty).toBeUndefined();
+    expect(result.run.receipt?.subject.workingTreeFiles).toBeUndefined();
   });
 
   it('records SHAs from the pull request attached to a trusted workflow_run event', () => {
@@ -389,9 +392,8 @@ describe('runGuardVerification', () => {
     expect(result.run.receipt?.tool.version).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it('binds a deleted tracked file to its last committed bytes', () => {
-    const content = 'export const retired = true;\n';
-    const { root, base } = createGitPolicyRoot({ 'deleted.ts': content });
+  it('records a deleted tracked path without claiming its previous bytes were verified', () => {
+    const { root, base } = createGitPolicyRoot({ 'deleted.ts': 'export const retired = true;\n' });
     rmSync(join(root, 'deleted.ts'));
 
     const result = runGuardVerification(root, {
@@ -403,9 +405,66 @@ describe('runGuardVerification', () => {
     expect(result.run.receipt?.verificationScope?.files).toContainEqual({
       path: 'deleted.ts',
       status: 'deleted',
-      sha256: createHash('sha256').update(content).digest('hex'),
     });
     expect(result.run.receipt?.verificationScope).toMatchObject({ complete: true, stable: true });
+  });
+
+  it.each([false, true])('attests Python source in a mixed-language project: %s', (mixed) => {
+    const python = 'from service import value\n';
+    const { root, base } = createGitPolicyRoot({
+      'pyproject.toml': '[project]\nname = "attested-python"\n',
+      'main.py': python,
+      'service.py': 'value = 1\n',
+      'retired.py': 'value = 0\n',
+      ...(mixed ? { 'index.ts': 'export const value = 1;\n' } : {}),
+    });
+    if (!mixed) rmSync(join(root, 'package.json'));
+    rmSync(join(root, 'retired.py'));
+
+    const result = runGuardVerification(root, {
+      policyBase: base,
+      projectChecks: false,
+      tools: 'off',
+    });
+
+    expect(result.outcome).toBe('pass');
+    expect(result.run.receipt?.verificationScope?.source).toMatchObject({
+      commit: base,
+      baseCommit: base,
+    });
+    const statement = guardReceiptToInToto(result.run.receipt!);
+    expect(statement.subject).toContainEqual({
+      name: 'file:main.py',
+      digest: { sha256: createHash('sha256').update(python).digest('hex') },
+    });
+    expect(statement.subject.some((subject) => subject.name === 'file:index.ts')).toBe(mixed);
+    expect(statement.subject.some((subject) => subject.name === 'file:retired.py')).toBe(false);
+    expect(result.run.receipt?.verificationScope?.files).toContainEqual({
+      path: 'retired.py',
+      status: 'deleted',
+    });
+    if (!mixed) expect(result.runtime.packageManager).toBeUndefined();
+  });
+
+  it('rejects attestation when an explicit check changes Python source', () => {
+    const { root } = createGitPolicyRoot({
+      'pyproject.toml': '[project]\nname = "mutating-check"\n',
+      'main.py': 'value = 1\n',
+      'check.cjs': "require('node:fs').writeFileSync('main.py', 'value = 2\\n')",
+      '.codapult/guard/agent.json': JSON.stringify({
+        ...defaultGuardAgentConfig,
+        tools: 'off',
+        checks: { test: 'node check.cjs' },
+      }),
+    });
+    rmSync(join(root, 'package.json'));
+
+    const result = runGuardVerification(root, { checks: ['test'], tools: 'off' });
+
+    expect(result.checks.test?.status).toBe('passed');
+    expect(result.outcome).toBe('incomplete');
+    expect(result.run.receipt?.verificationScope?.stable).toBe(false);
+    expect(() => guardReceiptToInToto(result.run.receipt!)).toThrow();
   });
 
   it('marks the verification incomplete if a check changes a scoped file', () => {

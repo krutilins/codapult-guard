@@ -38,6 +38,21 @@
 * **resolution:** directory requires such as `require('..')` and `require('../')` now resolve to the directory index, which adds graph edges. Findings on these imports gain a `resolvedPath`, which changes their fingerprints, so baselined or waived findings on directory requires appear once more after upgrading.
 * **cache:** module reuse now depends on a fingerprint of resolution inputs (TypeScript and JavaScript configs, `package.json` files, lockfiles, and the list of source files) instead of `git diff`, so committed config changes and projects without Git re-resolve correctly. The discovery cache version changes, so the first run after upgrading is a cold discovery.
 
+## [0.14.1](https://github.com/codapult/codapult-guard/compare/v0.14.0...v0.14.1) (2026-11-10)
+
+### Bug Fixes
+
+* update environment variable name for event path in runContext function ([a76e665](https://github.com/codapult/codapult-guard/commit/a76e6650722396af3da0e8b6a333875ecb6df344))
+* update event path variable for pull request context reading ([b45e694](https://github.com/codapult/codapult-guard/commit/b45e694b26b413e7ab0c330604e0e2d598659b78))
+
+## [0.14.0](https://github.com/codapult/codapult-guard/compare/v0.13.3...v0.14.0) (2026-11-09)
+
+### Features
+
+* add Guard verification predicate v1 specification and update predicate type ([8debb93](https://github.com/codapult/codapult-guard/commit/8debb932d970562195346daa5db152196fd10d56))
+* bind verification scope to source revisions ([621da2a](https://github.com/codapult/codapult-guard/commit/621da2a445d7c51fef8f9a094ff861e67e8037d6))
+* emit file-addressable Guard in-toto subjects ([c7db2be](https://github.com/codapult/codapult-guard/commit/c7db2be3217305ab12ff5229fa740fbe5bd86903))
+
 ## [0.13.3](https://github.com/codapult/codapult-guard/compare/v0.13.2...v0.13.3) (2026-11-02)
 
 ### Bug Fixes
