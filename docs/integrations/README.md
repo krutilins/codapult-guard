@@ -8,6 +8,13 @@ The examples use a project-local pnpm installation. Guard requires Node.js `>=20
 npm, replace `pnpm add -D @codapult/guard` with `npm install --save-dev @codapult/guard` and
 replace `pnpm exec codapult-guard` with `npx --no-install codapult-guard`.
 
+Replace `VERSION` below with an exact published release containing these features.
+For Python or other repositories without package.json, replace the project-local invocation with
+`npx --yes @codapult/guard@VERSION`. For MCP use command `npx` and arguments
+`["--yes", "@codapult/guard@VERSION", "mcp-server"]`, with the host working directory set to the project
+root. The same prefix supports `init`, `verify`, and `install-agent <target>`. Select an exact
+released version when upgrading; no project-local pnpm is required.
+
 These kits keep Guard platform-neutral while giving each host a concrete setup. Each page names
 the host's instruction file, MCP configuration file or command, verification command, and the
 available completion hook surface.

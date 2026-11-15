@@ -123,7 +123,9 @@ export function runProjectCommand(
       passed,
       exitCode,
       stdout: stdout.value,
-      stderr: timedOut ? `${stderr.value}\n[command timed out]` : stderr.value,
+      stderr: timedOut
+        ? `${stderr.value}\n[command timed out]`
+        : stderr.value || (execError.code ? `Command failed: ${execError.code}` : ''),
       durationMs: Math.max(0, Date.now() - startedAt),
       timedOut,
       truncated: stdout.truncated || stderr.truncated,

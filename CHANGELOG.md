@@ -4,11 +4,16 @@
 
 ### Features
 
+* **verification:** run explicit trusted agent.json check commands across ecosystems, with base-policy selection and existing npm defaults. Python-only runtime diagnostics no longer invent pnpm.
+* **ci:** add isolated pinned installation, Python-only CI, packaged init/verify/MCP validation, and pinned Flask/FastAPI/Django static fixtures.
+* **docs:** document language extension interfaces, conformance, and the Go package-graph limitation.
+
+
 * **architecture:** internal static language backends and ecosystem providers isolate parsing, resolution, enrichment, manifest metadata, and project conventions. Parsers load synchronously only when needed; Python-only analysis no longer creates or loads a TypeScript AST project. Conformance and architecture-boundary tests cover both implementations and test-only third implementations.
 
 
 * **python:** discover and analyze Python projects without a Python interpreter. Guard parses `.py` files with `@lezer/python`, resolves static imports (relative imports, `src/` layouts, nested projects, and namespace packages) into the shared graph, and applies `forbidden-import` rules, `import-boundary` contracts, and budgets to Python modules. See `docs/guard.md#python-projects`.
-* **report:** checks that need facts a module lacks, such as `required-call` on a Python module, are listed under `notApplicable` in JSON and MCP output, printed by `check` and `audit`, and written to SARIF as `invocations[0].toolExecutionNotifications`. They never change the exit code.
+* **report:** checks that need facts a module lacks, such as a directive-based rule on a Python module, are listed under `notApplicable` in JSON and MCP output, printed by `check` and `audit`, and written to SARIF as `invocations[0].toolExecutionNotifications`. They never change the exit code.
 * **model:** modules record `unresolvedImports`, and `insights.importResolution` summarizes resolved, unresolved, and external imports per language.
 * **impact:** impact results include `graph.status` (`complete` or `partial`) with the unresolved imports of affected modules. `doctor` prints the import summary.
 

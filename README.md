@@ -18,7 +18,8 @@ boundaries, and checks future changes locally and in CI. AI agents can use the s
 and verification results as developers.
 
 Python support covers static imports, manifest metadata, package boundaries, call contracts,
-environment reads, framework entrypoints, generated boundary proposals, and impact analysis. See [Python projects](docs/guard.md#python-projects) for the supported subset.
+environment reads, framework entrypoints, generated boundary proposals, impact analysis, and
+explicitly configured project checks. See [Python projects](docs/guard.md#python-projects) for the supported subset.
 
 ### Catch project-specific regressions
 
@@ -37,7 +38,8 @@ or activate proposed rules without approval.
 ## Get started
 
 Requirements: Node.js `>=20.19` and a JavaScript, TypeScript, or Python project. Python projects
-need no Python interpreter: Guard reads the source files and never runs them.
+need no Python interpreter for static analysis: discovery reads source without executing it.
+Explicit verification commands require whichever tools you configure.
 
 ```bash
 # pnpm
@@ -75,6 +77,21 @@ and [host integration guides](docs/integrations/).
 The MCP server uses host-managed local stdio, with no network listener or application-level
 authentication. The host and operating system control process access and workspace permissions;
 see the [security model](docs/guard.md#security-and-authentication).
+
+## Python repositories without package.json
+
+Guard needs Node.js >=20.19.0, but your project does not need Node dependencies:
+
+```sh
+npx --yes @codapult/guard@VERSION init
+npx --yes @codapult/guard@VERSION verify --no-project-checks --tools off
+npx --yes @codapult/guard@VERSION install-agent codex
+```
+
+Replace `VERSION` with an exact published release containing these features. Choose an exact released version when upgrading. Python tool checks use explicit
+[`agent.json` commands](docs/guard.md#configured-project-checks); Guard never infers commands from
+Python manifests. Use the [Python CI template](docs/guard-ci-python.yml) for an isolated, pinned
+installation. [Adding a language](docs/adding-a-language.md) describes the internal extension seam.
 
 ## Choose a GitHub setup
 

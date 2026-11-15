@@ -944,7 +944,10 @@ export function runGuardVerification(
   const scopeChangedPaths = changedFilesSince(root, policy.ref) ?? workspaceModel.git.changedFiles;
   const initialScope = verificationScope(root, workspaceModel.files, scopeChangedPaths, policy);
   const checksStartedAt = Date.now();
-  const results = runProjectChecks(root, checks, { timeout: options.timeout });
+  const results = runProjectChecks(root, checks, {
+    timeout: options.timeout,
+    commands: agentConfig.checks,
+  });
   recordGuardRunStage(
     runContext,
     'project-checks',

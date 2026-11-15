@@ -1159,7 +1159,7 @@ analyzed as source, but is never interpreted for metadata or executed.
 
 Lockfile preference is uv, Poetry, PDM, then Pipenv; requirements-only projects report pip.
 Competing lockfiles produce a warning. Console entrypoint targets are metadata, not executable
-project-check commands. Python tool execution remains separate work.
+project-check commands. Verification runs Python tooling only through explicit agent configuration.
 
 A package boundary means the nearest enclosing manifest-backed Python project, not an
 `__init__.py` directory. Local resolved paths identify target packages first; declared
@@ -1191,9 +1191,66 @@ At any depth, packaging manifests, `requirements*.txt`, `uv.lock`, `poetry.lock`
 `noxfile.py`, `conftest.py`, `.coveragerc`, and `.python-version`. Changes are reported in the
 policy surface and fail verification with `--fail-on-protected-changes`.
 
+### Configured project checks
+
+Add an optional top-level `checks` map to the existing `.codapult/guard/agent.json`:
+
+```json
+{
+  "checks": {
+    "lint": "ruff check .",
+    "typecheck": "mypy src",
+    "test": "pytest -q",
+    "build": "python -m build"
+  }
+}
+```
+
+This is a fragment: keep the existing version, tools, tooling, and completionGate fields.
+`completionGate.checks` (or the CLI selection) chooses which checks run;
+`completionGate.projectChecks` and `--no-project-checks` control execution. The command map works
+for Python, JS/TS, and mixed repositories. An explicit command overrides the corresponding npm
+fallback and runs once from the Guard root. Otherwise npm keeps its script/typecheck defaults and
+workspace fallback. Python has no inferred commands; an absent command is `not-configured`.
+
+Commands use the existing shell-free runner: use a program plus plain arguments, without shell
+operators or shell quoting. Put complex orchestration in a trusted script. Install tools and select
+the interpreter/environment yourself, for example `uv run pytest -q`. Missing tools, nonzero exits,
+and timeouts fail the check; output is bounded and redacted. Discovery and doctor run no tools.
+With `--policy-base`, command configuration comes from the base revision; command scripts still
+run against the working tree. PR/merge-group CI therefore disables project checks and adapters.
+
+For a project without `package.json`, replace `VERSION` below with an exact published release
+containing these features:
+
+```sh
+npx --yes @codapult/guard@VERSION init
+npx --yes @codapult/guard@VERSION verify
+npx --yes @codapult/guard@VERSION mcp-server
+```
+
+MCP configuration for a host whose working directory is the project root:
+
+```json
+{
+  "mcpServers": {
+    "codapult-guard": {
+      "command": "npx",
+      "args": ["--yes", "@codapult/guard@VERSION", "mcp-server"]
+    }
+  }
+}
+```
+
+Use [guard-ci-python.yml](guard-ci-python.yml) for CI without consumer Node dependencies. It installs
+Guard outside the checkout, ignores consumer npm configuration, disables install scripts, and uses
+an exact version. Python-only runtime diagnostics report the Node version used by Guard without
+inventing a pnpm package manager. The trusted attestation templates also support Python consumers:
+their pnpm/package.json references belong to the isolated Guard source build, not your project.
+
 ### Not implemented
 
-- Running Python tools such as Ruff, mypy, or pytest as verification adapters.
+- Automatic Python tool command inference and automatic interpreter/environment selection.
 - Dynamic imports with computed names, runtime `sys.path` changes, and distribution-to-import mapping tables.
 - Interprocedural call resolution or flow-sensitive alias/shadowing analysis.
 - Environment reads through `pydantic-settings`, `django-environ`, or other settings libraries;
@@ -1391,7 +1448,7 @@ permissions and artifact policy.
   recognized.
 - Requirement files must remain inside the detected project root and are size-limited.
 - Git base refs are validated before being used by review commands.
-- Project checks and external adapters execute the project's own scripts. Run Guard only in a
+- Project checks execute explicit commands or npm scripts; external adapters execute project scripts. Run Guard only in a
   trusted workspace and review scripts before enabling `tools: auto` or `tools: on`.
 - MCP roots are local filesystem paths supplied by the host. Run the MCP server with the least
   filesystem access appropriate for the projects it serves.

@@ -40,3 +40,9 @@ jobs:
 
       - name: Run Guard Python fixtures
         run: pnpm test:guard:fixtures:python
+
+      - name: Validate pinned Python projects
+        run: pnpm test:guard:fixtures:python-real
+
+      - name: Validate Python-only package installation and MCP
+        run: pnpm test:guard:fixtures:python-install

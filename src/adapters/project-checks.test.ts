@@ -16,6 +16,64 @@ afterEach(() => {
 });
 
 describe('runProjectChecks', () => {
+  it('does not invent a package manager for Python-only or empty repositories', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-runtime-'));
+    roots.push(root);
+    expect(inspectProjectRuntime(root).packageManager).toBeUndefined();
+    writeFileSync(join(root, 'pyproject.toml'), '[project]\nname = "checks"\n');
+    expect(inspectProjectRuntime(root)).toEqual({
+      node: process.versions.node,
+      compatible: true,
+      issues: [],
+    });
+    expect(runProjectChecks(root, ['test']).test?.status).toBe('not-configured');
+  });
+
+  it('runs explicit commands once at the root and overrides npm in mixed projects', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-mixed-check-'));
+    roots.push(root);
+    writeFileSync(join(root, 'pyproject.toml'), '[project]\nname = "checks"\n');
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { test: 'exit 1' } }));
+    writeFileSync(join(root, 'check.cjs'), 'console.log("explicit-root")');
+    const options = { commands: { test: 'node check.cjs' } };
+    const rootResults = runProjectChecks(root, ['test'], options);
+    expect(rootResults.test).toMatchObject({
+      status: 'passed',
+      command: 'node check.cjs',
+      stdout: 'explicit-root\n',
+    });
+    expect(
+      runWorkspaceProjectChecks(root, [{ path: 'nested', scripts: { test: 'exit 1' } }], ['test'], {
+        ...options,
+        rootResults,
+      }),
+    ).toEqual({});
+  });
+
+  it('normalizes explicit tool failures and timeouts without shell execution', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-explicit-errors-'));
+    roots.push(root);
+    writeFileSync(join(root, 'fail.cjs'), 'process.stderr.write("tool failed");process.exit(7)');
+    writeFileSync(join(root, 'wait.cjs'), 'setTimeout(() => {}, 10000)');
+    const results = runProjectChecks(root, ['lint', 'typecheck', 'test', 'build'], {
+      commands: {
+        lint: 'guard-missing-tool-123',
+        typecheck: 'node fail.cjs',
+        test: 'node wait.cjs',
+        build: 'echo forbidden && echo shell',
+      },
+      timeout: 150,
+    });
+    expect(results.lint).toMatchObject({ status: 'failed', stderr: 'Command failed: ENOENT' });
+    expect(results.typecheck).toMatchObject({
+      status: 'failed',
+      exitCode: 7,
+      stderr: 'tool failed',
+    });
+    expect(results.test).toMatchObject({ status: 'failed', timedOut: true });
+    expect(results.build).toMatchObject({ status: 'failed', exitCode: 2 });
+  });
+
   it('marks missing scripts as not-configured instead of failed', () => {
     const root = mkdtempSync(join(tmpdir(), 'guard-checks-'));
     roots.push(root);

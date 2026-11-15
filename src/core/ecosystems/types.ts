@@ -1,3 +1,4 @@
+import type { ProjectCheck } from '../model/types.js';
 import type { ProjectModel } from '../discovery/discovery.js';
 export type WorkspacePackage = ProjectModel['project']['workspacePackages'][number];
 export type ResolutionInput = 'content' | 'path' | undefined;
@@ -23,6 +24,8 @@ export interface EcosystemProvider {
   readonly id: string;
   readonly protectedPaths?: readonly { pattern: string; kind: string }[];
   readonly signals?: EcosystemSignals;
+  projectCheckCommand?(check: ProjectCheck, context: EcosystemContext): string | undefined;
+  runtimeDiagnostics?(context: EcosystemContext): ProjectRuntimeDiagnostics | undefined;
   packageMatches?(name: string, source: string): boolean;
   readonly rootMarkers: readonly string[];
   readonly ignoredDirectories: readonly string[];
@@ -40,4 +43,13 @@ export interface EcosystemSignals {
   runtimeAlwaysObserved?: boolean;
   frameworks: readonly { dependency: string; name: string; unless?: string }[];
   capabilities: Partial<Record<string, { packages: RegExp; imports: RegExp; evidence: string }>>;
+}
+
+export interface ProjectRuntimeDiagnostics {
+  node: string;
+  packageManager?: string | undefined;
+  declaredPackageManager?: string | undefined;
+  declaredNode?: string | undefined;
+  compatible: boolean;
+  issues: string[];
 }

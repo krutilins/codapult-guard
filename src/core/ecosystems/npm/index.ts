@@ -1,3 +1,4 @@
+import { projectCheckCommand, runtimeDiagnostics } from './checks.js';
 import { npmSignals } from './signals.js';
 import { existsSync, statSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
@@ -91,6 +92,12 @@ function workspacePackages(
 
 export const npmEcosystem = {
   id: 'npm',
+  projectCheckCommand(check, context) {
+    return projectCheckCommand(check, context.root);
+  },
+  runtimeDiagnostics(context) {
+    return runtimeDiagnostics(context.root);
+  },
   signals: npmSignals,
   protectedPaths: [
     { pattern: 'package.json', kind: 'dependency-input' },

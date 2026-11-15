@@ -4,7 +4,7 @@
 **Estimate:** 1–2 days  
 **Depends on:** Task 17  
 **Commit:** `feat(ci): add setup for projects without a Node toolchain`  
-**Status:** Not started
+**Status:** Done (2026-11-15); see [validation evidence](17-19-validation.md)
 
 ## Goal
 

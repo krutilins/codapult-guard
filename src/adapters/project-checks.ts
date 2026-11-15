@@ -1,14 +1,9 @@
-import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ecosystemRegistry } from '../core/ecosystems/index.js';
 import { runProjectCommand, type CommandResult } from './command.js';
+import type { ProjectRuntimeDiagnostics } from '../core/ecosystems/types.js';
+export type { ProjectRuntimeDiagnostics } from '../core/ecosystems/types.js';
 import type { GuardAdapterName, GuardToolMode, ProjectCheck } from '../core/model/types.js';
-
-const require = createRequire(import.meta.url);
-const { satisfies } = require('semver') as {
-  satisfies: (version: string, range: string) => boolean;
-};
 
 export type { ProjectCheck } from '../core/model/types.js';
 export type GuardAdapter = GuardAdapterName;
@@ -18,6 +13,7 @@ export type ProjectCheckResults = Partial<Record<ProjectCheck, CommandResult>>;
 
 export interface ProjectChecksOptions {
   timeout?: number | undefined;
+  commands?: Partial<Record<ProjectCheck, string>> | undefined;
 }
 
 export interface WorkspaceProjectChecksOptions extends ProjectChecksOptions {
@@ -28,21 +24,6 @@ export interface ProjectAdaptersOptions {
   mode?: Exclude<ExternalToolMode, 'off'> | undefined;
   timeout?: number | undefined;
   tooling?: Partial<Record<GuardAdapter, { script: string; enabled: boolean }>> | undefined;
-}
-
-interface PackageMetadata {
-  engines?: { node?: string | undefined } | undefined;
-  packageManager?: string | undefined;
-  scripts?: Record<string, string> | undefined;
-}
-
-export interface ProjectRuntimeDiagnostics {
-  node: string;
-  packageManager: string;
-  declaredPackageManager?: string | undefined;
-  declaredNode?: string | undefined;
-  compatible: boolean;
-  issues: string[];
 }
 
 function notConfigured(check: string): CommandResult {
@@ -57,72 +38,20 @@ function notConfigured(check: string): CommandResult {
   };
 }
 
-function readPackageMetadata(root: string): PackageMetadata {
+function readPackageMetadata(
+  root: string,
+): import('../core/ecosystems/types.js').ProjectCheckMetadata {
   return ecosystemRegistry.readCheckMetadata(root);
 }
 
-function packageManager(root: string, declared?: string): string {
-  const name = declared?.split('@', 1)[0];
-  if (name === 'pnpm' || name === 'yarn' || name === 'npm' || name === 'bun') return name;
-  for (const [lockfile, manager] of [
-    ['pnpm-lock.yaml', 'pnpm'],
-    ['yarn.lock', 'yarn'],
-    ['package-lock.json', 'npm'],
-    ['bun.lockb', 'bun'],
-    ['bun.lock', 'bun'],
-  ] as const) {
-    if (existsSync(resolve(root, lockfile))) return manager;
-  }
-  return 'pnpm';
-}
-
 export function inspectProjectRuntime(root: string): ProjectRuntimeDiagnostics {
-  const metadata = readPackageMetadata(root);
-  const manager = packageManager(root, metadata.packageManager);
-  const issues: string[] = [];
-  const declaredNode = metadata.engines?.node;
-  let nodeCompatible = true;
-  if (declaredNode) {
-    try {
-      nodeCompatible = satisfies(process.versions.node, declaredNode);
-    } catch {
-      nodeCompatible = false;
+  return (
+    ecosystemRegistry.runtimeDiagnostics({ root, allFiles: [] }) ?? {
+      node: process.versions.node,
+      compatible: true,
+      issues: [],
     }
-  }
-  if (declaredNode && !nodeCompatible) {
-    issues.push(`Node ${process.versions.node} does not satisfy engines.node "${declaredNode}".`);
-  }
-  const declaredManager = metadata.packageManager?.split('@', 1)[0];
-  if (declaredManager && declaredManager !== manager) {
-    issues.push(
-      `Detected package manager ${manager}, but packageManager declares ${declaredManager}.`,
-    );
-  }
-  return {
-    node: process.versions.node,
-    packageManager: manager,
-    ...(metadata.packageManager ? { declaredPackageManager: metadata.packageManager } : {}),
-    ...(declaredNode ? { declaredNode } : {}),
-    compatible: issues.length === 0,
-    issues,
-  };
-}
-
-function commandFor(
-  root: string,
-  manager: string,
-  check: ProjectCheck,
-  scripts: Record<string, string>,
-): string | undefined {
-  const run = (script: string, suffix = ''): string =>
-    manager === 'npm' ? `npm run ${script}${suffix}` : `${manager} run ${script}${suffix}`;
-  if (check === 'typecheck' && !scripts.typecheck && !scripts['type-check']) {
-    if (!existsSync(resolve(root, 'tsconfig.json'))) return undefined;
-    return manager === 'npm' ? 'npx --no-install tsc --noEmit' : `${manager} exec tsc --noEmit`;
-  }
-  if (check === 'typecheck') return run(scripts.typecheck ? 'typecheck' : 'type-check');
-  if (!scripts[check]) return undefined;
-  return run(check);
+  );
 }
 
 export function runProjectChecks(
@@ -130,12 +59,11 @@ export function runProjectChecks(
   checks: ProjectCheck[],
   options: ProjectChecksOptions = {},
 ): ProjectCheckResults {
-  const metadata = readPackageMetadata(root);
-  const manager = packageManager(root, metadata.packageManager);
-  const scripts = metadata.scripts ?? {};
   const results: Partial<Record<ProjectCheck, CommandResult>> = {};
   for (const check of checks) {
-    const command = commandFor(root, manager, check, scripts);
+    const command =
+      options.commands?.[check] ??
+      ecosystemRegistry.projectCheckCommand(check, { root, allFiles: [] });
     results[check] = command
       ? runProjectCommand(command, root, {
           timeout: options.timeout ?? (check === 'build' ? 300_000 : 120_000),
@@ -192,7 +120,7 @@ export function runProjectAdapters(
   options: ProjectAdaptersOptions = {},
 ): Partial<Record<GuardAdapter, CommandResult>> {
   const metadata = readPackageMetadata(root);
-  const manager = packageManager(root, metadata.packageManager);
+  const manager = inspectProjectRuntime(root).packageManager;
   const scripts = metadata.scripts ?? {};
   const results: Partial<Record<GuardAdapter, CommandResult>> = {};
   const executed = new Map<string, CommandResult>();
@@ -206,10 +134,10 @@ export function runProjectAdapters(
       : configured?.enabled === false
         ? undefined
         : Object.keys(scripts).find((name) => pattern.test(name));
-    if (!script && options.mode !== 'on') {
+    if ((!script || !manager) && options.mode !== 'on') {
       continue;
     }
-    if (!script) {
+    if (!script || !manager) {
       results[adapter] = notConfigured(adapter);
       continue;
     }

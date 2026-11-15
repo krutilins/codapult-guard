@@ -145,3 +145,30 @@ The harness fetches the PR head and the repository default branch, initializes
 Guard in the temporary checkout, and runs `codapult-guard review --base ...`.
 Set `GUARD_PR_BASE` when the PR targets a non-default branch. Use
 `GUARD_KEEP_PR_PROJECT=1` to retain the checkout for investigation.
+
+## Python completion validation
+
+`test:guard:prepare-fixtures` includes pinned Flask, FastAPI full-stack, and Django project clones.
+`test:guard:fixtures:python-real` checks deterministic static discovery, framework signals, local
+import edges, and supported entrypoints without installing or executing Python source. Set
+`GUARD_PYTHON_REAL_RESULTS` to save the complete summary (including proposals and diagnostics).
+
+`test:guard:fixtures:python-install` packs the current build, installs it away from the consumer
+checkout, and checks init, explicit verification commands, and an MCP handshake in a repository
+without package.json. It downloads Guard runtime dependencies, never publishes, and uses the shared
+`GUARD_NPM_CACHE` directory when supplied. Its explicit test command uses Node so Guard adoption
+does not require a Python interpreter. Both suites are included in default and full fixture runs.
+Native suites remain opt-in through `GUARD_NATIVE_INSTALL=1`; the remote PR suite requires
+`GUARD_PR_REPO` and `GUARD_PR_NUMBER`. Skipped stages are reported separately from passing stages.
+
+For fixture projects requiring an isolated runtime, set
+`GUARD_NATIVE_CONTAINER_PROJECTS=express,node-server`. Each selected fixture runs from a read-only
+Git source archive in a temporary Docker container, with no host ports published. Express uses
+Node 22.12.0 for compatibility with its pinned upstream tests; Hono uses Node 24.14.0 and can bind
+its own port 3000. This requires Docker and `GUARD_NATIVE_INSTALL=1` and does not stop host services.
+Vite uses its committed npm lockfile through `npm ci`.
+
+For the final performance gate, build both revisions and run
+`GUARD_BENCH_BASELINE=/path/to/baseline node scripts/guard-benchmark-compare.mjs` with heavy checks
+stopped. `GUARD_BENCH_RESULTS` saves raw measurements and medians. The script runs four alternating
+pairs per language, eight discoveries per process, and enforces the D13 thresholds.

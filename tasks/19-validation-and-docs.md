@@ -4,7 +4,7 @@
 **Estimate:** 2–3 days  
 **Depends on:** Tasks 10 to 18  
 **Commit:** `docs: document language architecture and Python support`  
-**Status:** Not started
+**Status:** Done (2026-11-15); see [validation evidence](17-19-validation.md)
 
 ## Goal
 

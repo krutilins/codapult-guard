@@ -77,3 +77,19 @@ requirements are in [Require Guard on GitHub merge queues](guard.md#require-guar
 The ordinary `guard-ci.yml` template also runs on `merge_group`, but it lives in the candidate
 repository. Use that option for candidate feedback when its workflow source is protected by your
 repository review policy; do not treat it as an independently protected workflow.
+
+## Projects without a Node package
+
+Python repositories can use [guard-ci-python.yml](guard-ci-python.yml) without adding package.json.
+Set repository variable `CODAPULT_GUARD_VERSION` to an exact published release containing these
+features, and replace `VERSION` below with that release. Initialize locally with `npx --yes @codapult/guard@VERSION init`, review the generated policy, and
+commit it. The workflow validates and installs that exact Guard release into runner temporary storage with
+lifecycle scripts disabled. It preserves base policy, merge-group checks, policy modes, receipts,
+and SARIF. Consumer dependency-input checks are unnecessary because project dependencies do not
+supply Guard's runtime. Update the reviewed version explicitly when adopting a release.
+
+PR and merge-group jobs run no Python or npm project commands. Trusted pushes may run explicit
+agent.json checks after you add the appropriate Python/tool environment setup. The trusted PR
+attestation and merge-group templates need no consumer package.json: pnpm installs the pinned
+Guard source in an isolated directory. Their repository-variable and host-protection requirements
+still apply. PyPI packaging and standalone binaries remain deferred.

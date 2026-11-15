@@ -1,3 +1,4 @@
+import type { ProjectCheck } from './model/types.js';
 import { boundaryProposals, persistenceImport } from './analysis/boundary-proposals.js';
 import { ecosystemRegistry } from './ecosystems/index.js';
 import { execFileSync } from 'node:child_process';
@@ -387,6 +388,7 @@ interface GuardPolicyTransaction {
 export type GuardProposalFreshness = 'current' | 'stale' | 'unknown';
 
 export interface GuardAgentConfig {
+  checks?: Partial<Record<ProjectCheck, string>> | undefined;
   version: 1;
   tools: GuardToolMode;
   tooling: Partial<Record<GuardAdapterName, { script: string; enabled: boolean }>>;

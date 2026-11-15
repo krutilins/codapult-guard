@@ -28,13 +28,12 @@ Tasks 02.1 and 02.2 change JS/TS behavior only and can be done in either order b
 ## Post-MVP
 
 - [09: Add optional Python project checks](09-python-project-checks-post-mvp.md) is deliberately separate from the MVP; it is replaced by [Task 17](../17-project-checks.md), using D27.
-- Follow-up work (new task IDs are separate from the Python MVP IDs):
-  - [`required-call` for Python](../12-python-calls.md) (D26);
-  - [Python manifests](../09-python-manifests.md) and [`package-boundary`](../10-python-package-boundary.md) (D25);
-  - classifying imports as runtime, type-only, or conditional, for both languages;
-  - [Python entrypoints](../15-python-entrypoints.md) and [framework/capability signals](../14-signal-tables.md);
-  - [language backends](../02-language-backend-interface.md) and [conformance tests](../07-language-conformance.md), retaining fact-based applicability;
-  - resolving JS/TS workspace package imports to package sources without installed `node_modules` (184 unresolved imports in the changesets fixture, D16).
+- The language/ecosystem extraction, calls, manifests, environment facts, signals, entrypoints,
+  and proposals are complete in [tasks 00–16](../../PLAN.md). Tasks 17–19 completed configured
+  project checks, Python-only adoption, and release validation; see their final evidence report.
+- Deferred backlog: runtime/type-only/conditional import classification, distribution/import
+  mappings, dynamic and indirect routes, settings-library environment reads, and JS/TS workspace
+  resolution without installed node_modules. These are not prerequisites for the accepted plan.
 
 ## Definition of done
 

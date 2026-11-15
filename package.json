@@ -67,6 +67,8 @@
     "test:guard:fixtures:regression": "pnpm build && node scripts/guard-fixture-regression.mjs",
     "test:guard:fixtures:native": "pnpm build && node scripts/guard-fixture-native.mjs",
     "test:guard:fixtures:adversarial": "pnpm build && node scripts/guard-fixture-adversarial.mjs",
+    "test:guard:fixtures:python-real": "pnpm build && node scripts/guard-fixture-python-real.mjs",
+    "test:guard:fixtures:python-install": "pnpm build && node scripts/guard-fixture-python-install.mjs",
     "test:guard:fixtures:python": "pnpm build && node scripts/guard-fixture-python.mjs",
     "test:guard:fixtures:all": "pnpm build && node scripts/guard-fixture-suite.mjs",
     "test:guard:fixtures:full": "pnpm build && node scripts/guard-fixture-suite.mjs --all",

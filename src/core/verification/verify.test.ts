@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GUARD_DIR } from '../guard.js';
+import { GUARD_DIR, defaultGuardAgentConfig, isGuardAgentConfig } from '../guard.js';
 import { runGuardVerification } from './verify.js';
 
 const roots: string[] = [];
@@ -38,6 +38,63 @@ afterEach(() => {
 });
 
 describe('runGuardVerification', () => {
+  it('validates explicit command maps while accepting existing agent policy', () => {
+    expect(isGuardAgentConfig(defaultGuardAgentConfig)).toBe(true);
+    expect(isGuardAgentConfig({ ...defaultGuardAgentConfig, checks: { test: 'pytest -q' } })).toBe(
+      true,
+    );
+    for (const checks of [{ test: '' }, { test: '  ' }, { unknown: 'pytest' }, { test: 5 }]) {
+      expect(isGuardAgentConfig({ ...defaultGuardAgentConfig, checks })).toBe(false);
+    }
+  });
+
+  it('loads explicit commands from base policy and never executes PR command overrides', () => {
+    const policy = { ...defaultGuardAgentConfig, tools: 'off', checks: { test: 'node base.cjs' } };
+    const { root, base } = createGitPolicyRoot({
+      '.codapult/guard/agent.json': JSON.stringify(policy),
+      'base.cjs': 'console.log("base-command")',
+      'pr.cjs': 'throw new Error("PR COMMAND EXECUTED")',
+    });
+    writeFileSync(
+      join(root, GUARD_DIR, 'agent.json'),
+      JSON.stringify({ ...policy, checks: { test: 'node pr.cjs' } }),
+    );
+    const result = runGuardVerification(root, { policyBase: base, checks: ['test'], tools: 'off' });
+    expect(result.checks.test).toMatchObject({
+      status: 'passed',
+      command: 'node base.cjs',
+      stdout: 'base-command\n',
+    });
+    const disabled = runGuardVerification(root, {
+      projectChecks: false,
+      tools: 'off',
+      policyBase: base,
+    });
+    expect(disabled.checks).toEqual({});
+    expect(disabled.workspaceChecks).toEqual({});
+  });
+
+  it('runs configured commands in a Python-only project', () => {
+    const root = mkdtempSync(join(tmpdir(), 'guard-python-checks-'));
+    roots.push(root);
+    mkdirSync(join(root, GUARD_DIR), { recursive: true });
+    writeFileSync(join(root, 'pyproject.toml'), '[project]\nname = "checks"\n');
+    writeFileSync(join(root, 'main.py'), 'print("never execute discovery")\n');
+    writeFileSync(join(root, 'check.cjs'), 'console.log("configured")');
+    writeFileSync(join(root, GUARD_DIR, 'rules.json'), JSON.stringify({ version: 1, rules: [] }));
+    writeFileSync(
+      join(root, GUARD_DIR, 'agent.json'),
+      JSON.stringify({
+        ...defaultGuardAgentConfig,
+        tools: 'off',
+        checks: { test: 'node check.cjs' },
+      }),
+    );
+    const result = runGuardVerification(root, { checks: ['test'], tools: 'off' });
+    expect(result.checks.test).toMatchObject({ status: 'passed', command: 'node check.cjs' });
+    expect(result.runtime.packageManager).toBeUndefined();
+  });
+
   it('reports an unconfigured Guard without running project commands', () => {
     const root = mkdtempSync(join(tmpdir(), 'guard-verify-'));
     roots.push(root);

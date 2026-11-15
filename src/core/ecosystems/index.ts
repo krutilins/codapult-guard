@@ -1,3 +1,4 @@
+import type { ProjectCheck } from '../model/types.js';
 import { basename } from 'node:path';
 import { npmEcosystem } from './npm/index.js';
 import { pythonEcosystem } from './python/index.js';
@@ -6,6 +7,7 @@ import type {
   EcosystemProvider,
   EcosystemProject,
   ProjectCheckMetadata,
+  ProjectRuntimeDiagnostics,
   ResolutionInput,
 } from './types.js';
 export { pythonProjectRoots } from './python/index.js';
@@ -18,6 +20,8 @@ export interface EcosystemRegistry {
   resolutionInput(path: string): ResolutionInput;
   signatureInputs(context: EcosystemContext): unknown[];
   resolutionRoots(paths: string[]): Record<string, string[]>;
+  projectCheckCommand(check: ProjectCheck, context: EcosystemContext): string | undefined;
+  runtimeDiagnostics(context: EcosystemContext): ProjectRuntimeDiagnostics | undefined;
   readCheckMetadata(root: string): ProjectCheckMetadata;
   readProject(context: EcosystemContext): EcosystemProject;
 }
@@ -55,6 +59,20 @@ export function createEcosystemRegistry(
         for (const [language, roots] of Object.entries(provider.resolutionRoots?.(paths) ?? {}))
           result[language] = [...new Set([...(result[language] ?? []), ...roots])].sort();
       return result;
+    },
+    projectCheckCommand(check, context) {
+      for (const provider of providers) {
+        const command = provider.projectCheckCommand?.(check, context);
+        if (command !== undefined) return command;
+      }
+      return undefined;
+    },
+    runtimeDiagnostics(context) {
+      for (const provider of providers) {
+        const diagnostics = provider.runtimeDiagnostics?.(context);
+        if (diagnostics !== undefined) return diagnostics;
+      }
+      return undefined;
     },
     readCheckMetadata(root: string): ProjectCheckMetadata {
       for (const provider of providers)

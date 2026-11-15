@@ -241,6 +241,9 @@ export const guardProposalSchema = z
   });
 
 export const guardAgentConfigSchema = z.object({
+  checks: z
+    .partialRecord(z.enum(['lint', 'typecheck', 'test', 'build']), z.string().trim().min(1))
+    .optional(),
   version: z.literal(1),
   tools: z.enum(['auto', 'on', 'off']),
   tooling: z

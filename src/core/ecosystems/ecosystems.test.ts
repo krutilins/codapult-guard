@@ -101,3 +101,26 @@ it('preserves primary metadata precedence while merging provider packages', () =
     packages: [{ path: 'pkg' }],
   });
 });
+
+it('dispatches optional check commands and runtime diagnostics without ecosystem-specific consumers', () => {
+  const provider: EcosystemProvider = {
+    ...fake,
+    projectCheckCommand(check, context) {
+      return check === 'test' ? `fake-tool ${context.root}` : undefined;
+    },
+    runtimeDiagnostics() {
+      return {
+        node: process.versions.node,
+        packageManager: 'fake-manager',
+        compatible: true,
+        issues: [],
+      };
+    },
+  };
+  const registry = createEcosystemRegistry([fake, provider]);
+  const context = { root: 'example', allFiles: [] };
+  expect(registry.projectCheckCommand('test', context)).toBe('fake-tool example');
+  expect(registry.projectCheckCommand('lint', context)).toBeUndefined();
+  expect(registry.runtimeDiagnostics(context)?.packageManager).toBe('fake-manager');
+  expect(createEcosystemRegistry([fake]).runtimeDiagnostics(context)).toBeUndefined();
+});

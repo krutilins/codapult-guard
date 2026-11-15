@@ -417,3 +417,18 @@ FastAPI, Flask and Django. These decisions do not enable the later features in t
   declare variables. Backend fact availability gates environment insights.
 
 Implementation and validation: [tasks 09–16 evidence](09-16-validation.md).
+
+## D33–D35: Completion validation and adoption
+
+- **D33:** explicit top-level agent.json `checks` commands apply to every ecosystem and override
+  the corresponding npm fallback. Selected base policy owns the command map under --policy-base.
+  Commands run once at the root through the existing shell-free runner; workspaces retain npm
+  fallback only for checks missing at the root. Python tooling is never inferred.
+- **D34:** Python consumers use an exact published npm version. The Python CI template reads
+  CODAPULT_GUARD_VERSION, rejects ranges/latest/empty versions, and installs outside the checkout
+  with user/global npm configuration isolated and lifecycle scripts disabled. Documentation uses
+  VERSION placeholders because this work does not publish a new release.
+- **D35:** full validation includes upstream native fixture commands, with optional temporary
+  Docker runtimes for environment-sensitive projects. Source archives are read-only mounts,
+  containers publish no ports, and tests run as a non-root user. Remote PR validation remains
+  credential/context-dependent and is reported as skipped when no repository/number is supplied.

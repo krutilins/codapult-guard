@@ -1,6 +1,6 @@
 # Language-agnostic architecture plan
 
-**Status:** In progress. Tasks 00–08 completed on 2026-11-14 and tasks 09–16 on 2026-11-15; tasks 17–19 remain.
+**Status:** Complete. Tasks 00–08 completed on 2026-11-14; tasks 09–19 completed on 2026-11-15. See [final validation evidence](tasks/17-19-validation.md), including explicitly deferred work and the skipped remote PR stage.
 
 **Starting point:** the Python MVP is complete and merged with main (see [tasks/python-support-plan.md](tasks/python-support-plan.md))  
 **Tasks:** one file per commit in [tasks/](tasks/), indexed under [Work breakdown](#work-breakdown)
@@ -15,7 +15,7 @@ Three outcomes define success:
 
 1. **Python parity where the concept applies.** A Python team gets dependencies, frameworks, package boundaries, `required-call` contracts, entrypoint impact paths, and project checks.
 2. **An extension seam that is proven.** A test-only fake language passes the same conformance suite as the real backends, and it needs only a registration.
-3. **No regression for JS/TS users.** Refactoring tasks leave the JS/TS model unchanged on all fixtures, and the only Python model change is one field rename in Task 03. The few intended JS/TS behavior changes are listed in the changelog.
+3. **No regression for JS/TS users.** Foundation refactoring preserves JS/TS fixture models and renames one Python field in Task 03. Later Python model additions and intentional JS/TS behavior changes are documented in the changelog.
 
 ## What language-agnostic means here
 
@@ -103,28 +103,28 @@ The total is about 30–48 working days. These are planning estimates. Task 04 a
 
 Each task is one commit that keeps all gates green. Python task IDs in `tasks/python-support/` are separate and are written as "Python Task NN".
 
-| ID  | Task                                                                                             | Depends on | Estimate | Status      |
-| --- | ------------------------------------------------------------------------------------------------ | ---------- | -------- | ----------- |
-| 00  | [Record decisions and clean up references](tasks/00-record-decisions.md)                         | None       | 0.5 day  | Done        |
-| 01  | [Add a model baseline for all fixtures](tasks/01-model-baseline.md)                              | None       | 1 day    | Done        |
-| 02  | [Add the backend interface and move file classification](tasks/02-language-backend-interface.md) | 01         | 1–2 days | Done        |
-| 03  | [Move Python behind its backend](tasks/03-python-backend.md)                                     | 02         | 1–2 days | Done        |
-| 04  | [Move JS/TS parsing and resolution behind its backend](tasks/04-js-ts-backend.md)                | 02         | 2–3 days | Done        |
-| 05  | [Move JS/TS AST enrichment behind its backend](tasks/05-js-ts-enrichment.md)                     | 04         | 1–2 days | Done        |
-| 06  | [Remove language branches from shared code](tasks/06-neutral-consumers.md)                       | 03, 05     | 1–2 days | Done        |
-| 07  | [Add the conformance suite and boundary test](tasks/07-language-conformance.md)                  | 06         | 1 day    | Done        |
-| 08  | [Add the ecosystem interface and extract npm](tasks/08-ecosystem-provider.md)                    | 07         | 2–3 days | Done        |
-| 09  | [Read Python manifests](tasks/09-python-manifests.md)                                            | 08         | 2–3 days | Done        |
-| 10  | [Support `package-boundary` on Python](tasks/10-python-package-boundary.md)                      | 09         | 1–2 days | Done        |
-| 11  | [Move protected paths into ecosystems](tasks/11-protected-paths.md)                              | 08         | 1 day    | Done        |
-| 12  | [Support `required-call` on Python](tasks/12-python-calls.md)                                    | 07         | 2–3 days | Done        |
-| 13  | [Support the environment insight on Python](tasks/13-python-environment.md)                      | 07         | 1–2 days | Done        |
-| 14  | [Turn framework and capability signals into data](tasks/14-signal-tables.md)                     | 09         | 2–3 days | Done        |
-| 15  | [Add entrypoints for Python impact paths](tasks/15-python-entrypoints.md)                        | 12, 14     | 2–4 days | Done        |
-| 16  | [Generate language-neutral proposals](tasks/16-neutral-proposals.md)                             | 14         | 2–3 days | Done        |
-| 17  | [Add project checks per ecosystem](tasks/17-project-checks.md)                                   | 08         | 3–5 days | Not started |
-| 18  | [Support Python-only installs and CI](tasks/18-python-ci.md)                                     | 17         | 1–2 days | Not started |
-| 19  | [Validate on real projects and publish docs](tasks/19-validation-and-docs.md)                    | 10–18      | 2–3 days | Not started |
+| ID  | Task                                                                                             | Depends on | Estimate | Status |
+| --- | ------------------------------------------------------------------------------------------------ | ---------- | -------- | ------ |
+| 00  | [Record decisions and clean up references](tasks/00-record-decisions.md)                         | None       | 0.5 day  | Done   |
+| 01  | [Add a model baseline for all fixtures](tasks/01-model-baseline.md)                              | None       | 1 day    | Done   |
+| 02  | [Add the backend interface and move file classification](tasks/02-language-backend-interface.md) | 01         | 1–2 days | Done   |
+| 03  | [Move Python behind its backend](tasks/03-python-backend.md)                                     | 02         | 1–2 days | Done   |
+| 04  | [Move JS/TS parsing and resolution behind its backend](tasks/04-js-ts-backend.md)                | 02         | 2–3 days | Done   |
+| 05  | [Move JS/TS AST enrichment behind its backend](tasks/05-js-ts-enrichment.md)                     | 04         | 1–2 days | Done   |
+| 06  | [Remove language branches from shared code](tasks/06-neutral-consumers.md)                       | 03, 05     | 1–2 days | Done   |
+| 07  | [Add the conformance suite and boundary test](tasks/07-language-conformance.md)                  | 06         | 1 day    | Done   |
+| 08  | [Add the ecosystem interface and extract npm](tasks/08-ecosystem-provider.md)                    | 07         | 2–3 days | Done   |
+| 09  | [Read Python manifests](tasks/09-python-manifests.md)                                            | 08         | 2–3 days | Done   |
+| 10  | [Support `package-boundary` on Python](tasks/10-python-package-boundary.md)                      | 09         | 1–2 days | Done   |
+| 11  | [Move protected paths into ecosystems](tasks/11-protected-paths.md)                              | 08         | 1 day    | Done   |
+| 12  | [Support `required-call` on Python](tasks/12-python-calls.md)                                    | 07         | 2–3 days | Done   |
+| 13  | [Support the environment insight on Python](tasks/13-python-environment.md)                      | 07         | 1–2 days | Done   |
+| 14  | [Turn framework and capability signals into data](tasks/14-signal-tables.md)                     | 09         | 2–3 days | Done   |
+| 15  | [Add entrypoints for Python impact paths](tasks/15-python-entrypoints.md)                        | 12, 14     | 2–4 days | Done   |
+| 16  | [Generate language-neutral proposals](tasks/16-neutral-proposals.md)                             | 14         | 2–3 days | Done   |
+| 17  | [Add project checks per ecosystem](tasks/17-project-checks.md)                                   | 08         | 3–5 days | Done   |
+| 18  | [Support Python-only installs and CI](tasks/18-python-ci.md)                                     | 17         | 1–2 days | Done   |
+| 19  | [Validate on real projects and publish docs](tasks/19-validation-and-docs.md)                    | 10–18      | 2–3 days | Done   |
 
 ## Gates for every commit
 
@@ -154,20 +154,26 @@ Each task is one commit that keeps all gates green. Python task IDs in `tasks/py
 - Executing project code during discovery.
 - Actually adding a third language. Task 19 only checks that the seam would support one.
 
-Backlog items from the Python plan that stay deferred: classifying imports as runtime, type-only, or conditional, and resolving JS/TS workspace imports without `node_modules`.
+Deferred backlog: runtime/type-only/conditional import classification; JS/TS workspace imports
+without node_modules; distribution/import-name mappings; dynamic routing and indirect Django
+includes; settings-library environment reads; multi-file package graph targets for a future Go
+backend; PyPI packaging; and standalone binaries. The Go interface limit is documented in
+[the extension guide](docs/adding-a-language.md).
 
 ## Accepted defaults
 
 The defaults below are accepted in D20–D28; none remains open.
 
 1. **Parse diagnostics and `required-call` (D26).** The default reports not applicable. The stricter option reports a finding and accepts false positives on files the parser can't fully read.
-2. **Distribution for Python teams (Task 18).** The default is a pinned `npx` command in CI with Node set up by the workflow. A PyPI wrapper or a standalone binary would remove the Node step, at a real maintenance cost, so both are deferred until users ask.
+2. **Distribution for Python teams (Task 18).** Local adoption uses pinned `npx`; CI sets up Node and installs an exact validated release outside the checkout, then invokes its CLI by absolute path. A PyPI wrapper or a standalone binary would remove the Node step, at a real maintenance cost, so both are deferred until users ask.
 3. **Scope of framework support (Tasks 14 and 15).** The default covers FastAPI, Flask, and Django, because the existing real-project checks already use Flask and the FastAPI template.
 
 ## Completion criteria
 
-- Python-only and mixed repositories get dependencies, packages, frameworks, entrypoints, proposals, and the matching checks, or an explicit not-applicable entry.
-- No file outside `core/languages/` or `core/ecosystems/` imports `ts-morph` or `@lezer/python`, or contains a language ID as a branch condition. A test enforces this.
-- A fake language passes the conformance suite and needs only registry entries.
-- All JS/TS fixture gates pass, and every intended behavior change is in the changelog.
-- `docs/adding-a-language.md` exists and matches the code.
+- [x] Python-only and mixed repositories get dependencies, packages, frameworks, entrypoints, proposals, and the matching checks, or an explicit not-applicable entry.
+- [x] No file outside `core/languages/` or `core/ecosystems/` imports `ts-morph` or `@lezer/python`, or contains a language ID as a branch condition. A test enforces this.
+- [x] A fake language passes the conformance suite and needs only registry entries.
+- [x] All JS/TS fixture gates pass, and every intended behavior change is in the changelog.
+- [x] `docs/adding-a-language.md` exists and matches the code.
+
+Every criterion is mapped to tests, fixture results, and documentation in [the final report](tasks/17-19-validation.md). The Go review records a package-graph limit; no Go support is claimed.

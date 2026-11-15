@@ -4,7 +4,8 @@
 **Estimate:** 3–5 days  
 **Depends on:** Task 08  
 **Commit:** `feat(verification): run project checks through ecosystems`  
-**Status:** Not started  
+**Status:** Done (2026-11-15); see [validation evidence](17-19-validation.md)
+
 **Decision:** D27, which answers the open question in Python Task 09
 
 ## Goal
