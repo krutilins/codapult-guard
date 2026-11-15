@@ -55,6 +55,7 @@ export interface ModuleRecord {
   directives: string[];
   /** Opaque parser facts, interpreted only by the owning language backend. */
   parseFacts?: unknown;
+  incompleteFacts?: import('../languages/types.js').ModuleFact[];
   /** Up to 5 lines with syntax error nodes. Informational; never produces findings (D3). */
   parseDiagnostics?: number[] | undefined;
   /** Canonical source names supplied by the owning backend for relative import spellings. */
@@ -72,6 +73,7 @@ export interface CapabilitySignal {
 
 export interface ProjectModel {
   version: 1;
+  diagnostics?: { path: string; message: string }[];
   project: {
     name?: string | undefined;
     packageManager?: string | undefined;
@@ -82,6 +84,15 @@ export interface ProjectModel {
     workspacePackages: {
       path: string;
       name?: string | undefined;
+      ecosystem?: string;
+      dependencyDeclarations?: {
+        name: string;
+        writtenName: string;
+        requirement: string;
+        group: string;
+        source: string;
+      }[];
+      entrypoints?: { name: string; target: string }[];
       private: boolean;
       scripts: Record<string, string>;
       dependencies: string[];
@@ -211,7 +222,7 @@ const discoveryReuse = new Map<string, number>();
 const discoveryCacheHits = new Map<string, boolean>();
 // Bump when the persisted model shape changes; old cache entries must never
 // bypass discovery and return an incomplete ProjectModel.
-const DISCOVERY_CACHE_VERSION = 9;
+const DISCOVERY_CACHE_VERSION = 10;
 
 function discoveryCachePath(root: string): string {
   return resolve(root, `.${config.appName}/guard/cache.json`);
@@ -413,19 +424,11 @@ function inferFrameworks(
   devDependencies: Record<string, string>,
 ): string[] {
   const all = new Set([...Object.keys(dependencies), ...Object.keys(devDependencies)]);
-  const known: readonly (readonly [string, string])[] = [
-    ['next', 'Next.js'],
-    ['react', 'React'],
-    ['vue', 'Vue'],
-    ['svelte', 'Svelte'],
-    ['express', 'Express'],
-    ['fastify', 'Fastify'],
-    ['@nestjs/core', 'NestJS'],
-    ['drizzle-orm', 'Drizzle'],
-    ['prisma', 'Prisma'],
-  ] as const;
-  const frameworks = known.filter(([dependency]) => all.has(dependency)).map(([, name]) => name);
-  if (all.has('vite') && !all.has('next')) frameworks.push('Vite');
+  const frameworks = ecosystemRegistry.providers.flatMap((provider) =>
+    (provider.signals?.frameworks ?? [])
+      .filter((item) => all.has(item.dependency) && (!item.unless || !all.has(item.unless)))
+      .map((item) => item.name),
+  );
   return frameworks;
 }
 
@@ -570,21 +573,42 @@ function detectCapabilities(
   dependencies: Record<string, string>,
   devDependencies: Record<string, string>,
   scripts: Record<string, string>,
+  workspaces: ProjectModel['project']['workspacePackages'],
 ): Record<string, CapabilitySignal> {
-  const allPackages = Object.keys({ ...dependencies, ...devDependencies });
+  const activeEcosystems = new Set(modules.map((m) => languageRegistry.forPath(m.path)?.ecosystem));
+  if (activeEcosystems.size === 0) activeEcosystems.add('npm');
+  const allPackages = [
+    ...new Set([
+      ...Object.keys({ ...dependencies, ...devDependencies }),
+      ...workspaces.flatMap((p) => p.dependencyDeclarations?.map((d) => d.name) ?? []),
+    ]),
+  ];
   const evidenceFiles = files
     .filter((file) => file.kind !== 'documentation')
     .map((file) => file.path);
   const allImports = [...new Set(modules.flatMap((module) => module.imports))].sort();
-  const packageSignal = (
-    packagePattern: RegExp,
-    filePattern: RegExp,
-    importPattern: RegExp,
-    evidence: string,
-  ): CapabilitySignal => {
-    const packages = allPackages.filter((name) => packagePattern.test(name));
+  const signalsFor = (key: string): { packages: RegExp; imports: RegExp; evidence: string }[] =>
+    ecosystemRegistry.providers.flatMap((p) =>
+      activeEcosystems.has(p.id) && p.signals?.capabilities[key]
+        ? [p.signals.capabilities[key]]
+        : [],
+    );
+  const packageSignal = (key: string, filePattern: RegExp): CapabilitySignal => {
+    const signals = signalsFor(key);
+    const packages = allPackages.filter((name) => signals.some((s) => s.packages.test(name)));
+    const importPatterns = signals.map((s) => s.imports);
+    const importPattern =
+      importPatterns.length === 1
+        ? importPatterns[0]
+        : new RegExp(
+            importPatterns.map((p) => p.source).join('|') || '(?!)',
+            importPatterns.some((p) => p.ignoreCase) ? 'i' : '',
+          );
+    const evidence = signals[0]?.evidence ?? key;
     const matchedFiles = evidenceFiles.filter((file) => filePattern.test(file));
-    const imports = allImports.filter((importPath) => importPattern.test(importPath));
+    const imports = allImports.filter((importPath) =>
+      signals.some((signal) => signal.imports.test(importPath)),
+    );
     return {
       status: matchedFiles.length > 0 || imports.length > 0 ? 'observed' : 'inferred',
       confidence:
@@ -605,25 +629,36 @@ function detectCapabilities(
     };
   };
 
+  const runtimePackages = allPackages.filter((name) =>
+    signalsFor('runtime').some((signal) => signal.packages.test(name)),
+  );
+  const runtimeImports = allImports.filter((source) =>
+    signalsFor('runtime').some((signal) => signal.imports.test(source)),
+  );
+  const runtimeFiles = files.filter((file) => file.kind === 'config').map((file) => file.path);
+  const alwaysObserved = ecosystemRegistry.providers.some(
+    (provider) =>
+      activeEcosystems.has(provider.id) && provider.signals?.runtimeAlwaysObserved === true,
+  );
   const capabilities: Record<string, CapabilitySignal> = {
     runtime: {
-      status: 'observed',
-      confidence: 'high',
-      packages: allPackages.filter((name) =>
-        /^(next|react|vue|svelte|express|fastify|@nestjs\/core)$/.test(name),
-      ),
-      files: files.filter((file) => file.kind === 'config').map((file) => file.path),
-      imports: allImports.filter((importPath) =>
-        /^(next|react|vue|svelte|express|fastify)(\/|$)/.test(importPath),
-      ),
+      status:
+        alwaysObserved || runtimeImports.length > 0 || runtimeFiles.length > 0
+          ? 'observed'
+          : 'inferred',
+      confidence:
+        alwaysObserved ||
+        (runtimePackages.length > 0 && (runtimeImports.length > 0 || runtimeFiles.length > 0))
+          ? 'high'
+          : runtimePackages.length > 0 || runtimeImports.length > 0 || runtimeFiles.length > 0
+            ? 'medium'
+            : 'low',
+      packages: runtimePackages,
+      files: runtimeFiles,
+      imports: runtimeImports,
       evidence: ['package metadata and runtime imports'],
     },
-    routing: packageSignal(
-      /^next$/,
-      /(?:^|\/)(?:route|page)\.[cm]?[jt]sx?$/,
-      /^(next\/navigation|next\/server|next\/headers)$/,
-      'route and page conventions',
-    ),
+    routing: packageSignal('routing', /(?:^|\/)(?:route|page)\.[cm]?[jt]sx?$/),
     'server-client-boundaries': {
       status: 'observed',
       confidence: 'high',
@@ -639,83 +674,42 @@ function detectCapabilities(
       evidence: ['use client/use server directives'],
     },
     persistence: packageSignal(
-      /^(?:drizzle-orm|drizzle-kit|prisma|@prisma\/client|typeorm|sequelize|mongoose|knex|@libsql\/client)$/,
+      'persistence',
       /(?:^|\/)(?:db|database|repositories|schema|schemas|migrations|drizzle)(?:\/|[^/]*$)/i,
-      /^(?:@prisma\/client|prisma|drizzle-orm|drizzle-kit|typeorm|sequelize|mongoose|knex|@libsql\/client)(\/|$)|(?:^|\/)(?:db|database)(\/|$)/i,
-      'database and ORM conventions',
     ),
     identity: packageSignal(
-      /auth|identity|session|kinde|clerk|lucia|next-auth|better-auth/i,
+      'identity',
       /(?:^|\/)(?:auth|authentication|identity|session)(?:\/|[^/]*$)/i,
-      /(?:^|\/)(?:auth|authentication|identity|session)(?:\/|$)/i,
-      'identity and session conventions',
     ),
     payments: packageSignal(
-      /stripe|lemonsqueezy|paddle|paypal|braintree|polar/i,
+      'payments',
       /(?:^|\/)(?:billing|payment|payments|checkout|subscription|subscriptions)(?:\/|[^/]*$)/i,
-      /stripe|lemonsqueezy|paddle|paypal|braintree|polar/i,
-      'payment provider conventions',
     ),
-    email: packageSignal(
-      /resend|react-email|nodemailer|postmark|sendgrid|mailgun/i,
-      /(?:^|\/)(?:email|emails|mail|templates)(?:\/|[^/]*$)/i,
-      /resend|react-email|nodemailer|postmark|sendgrid|mailgun/i,
-      'email delivery and template conventions',
-    ),
-    ai: packageSignal(
-      /^(?:ai|openai|anthropic|@ai-sdk\/|@langchain\/)/i,
-      /(?:^|\/)(?:ai|agents|prompts|embeddings|rag|llm)(?:\/|[^/]*$)/i,
-      /^(?:ai|openai|anthropic|@ai-sdk\/|@langchain\/)/i,
-      'AI and model integration conventions',
-    ),
+    email: packageSignal('email', /(?:^|\/)(?:email|emails|mail|templates)(?:\/|[^/]*$)/i),
+    ai: packageSignal('ai', /(?:^|\/)(?:ai|agents|prompts|embeddings|rag|llm)(?:\/|[^/]*$)/i),
     jobs: packageSignal(
-      /bullmq|agenda|inngest|trigger\.dev|@temporalio|graphile-worker|bee-queue|pg-boss/i,
+      'jobs',
       /(?:^|\/)(?:jobs|queues|queue|workers|worker|background|tasks)(?:\/|[^/]*$)/i,
-      /bullmq|agenda|inngest|trigger\.dev|@temporalio|graphile-worker|bee-queue|pg-boss/i,
-      'background job and queue conventions',
     ),
     env: packageSignal(
-      /dotenv|envalid|convex|@t3-oss\/env/i,
+      'env',
       /(?:^|\/)(?:env|environment)(?:\/|[^/]*$)|(?:^|\/)\.env(?:\.example)?$|(?:^|\/)(?:config|configuration)\/env(?:[^/]*)$/i,
-      /dotenv|envalid|@t3-oss\/env/i,
-      'environment and configuration conventions',
     ),
     deployment: packageSignal(
-      /vercel|docker|pulumi|terraform|kubernetes|helm|aws-sdk|@aws-sdk\//i,
+      'deployment',
       /(?:^|\/)(?:Dockerfile|docker-compose|infra|terraform|pulumi|helm|k8s|\.github\/workflows)(?:\/|[^/]*$)/i,
-      /vercel|pulumi|terraform|kubernetes|helm|aws-sdk|@aws-sdk\//i,
-      'deployment and infrastructure conventions',
     ),
     testing: packageSignal(
-      /vitest|jest|playwright|cypress|mocha|ava/i,
+      'testing',
       /(?:^|\/)(?:__tests__|tests?|e2e)(?:\/|[^/]*$)|\.(?:test|spec)\./i,
-      /vitest|jest|playwright|cypress|mocha|ava/i,
-      'test runner and test layout conventions',
     ),
     observability: packageSignal(
-      /sentry|opentelemetry|datadog|pino|winston|otel/i,
+      'observability',
       /(?:^|\/)(?:instrumentation|observability|monitoring|logging|telemetry)(?:\/|[^/]*$)/i,
-      /sentry|opentelemetry|datadog|pino|winston|otel/i,
-      'logging, tracing, and error monitoring conventions',
     ),
-    storage: packageSignal(
-      /s3|minio|r2|uploadthing|cloudinary|sharp/i,
-      /(?:^|\/)(?:storage|uploads?|media|assets)(?:\/|[^/]*$)/i,
-      /s3|minio|r2|uploadthing|cloudinary/i,
-      'file and object storage conventions',
-    ),
-    'graphql-rpc': packageSignal(
-      /graphql|trpc|grpc|@connectrpc\//i,
-      /(?:^|\/)(?:graphql|trpc|rpc)(?:\/|[^/]*$)/i,
-      /graphql|trpc|grpc|@connectrpc\//i,
-      'GraphQL and RPC conventions',
-    ),
-    i18n: packageSignal(
-      /next-intl|i18next|react-i18next|lingui/i,
-      /(?:^|\/)(?:i18n|locales?|messages|translations?)(?:\/|[^/]*$)/i,
-      /next-intl|i18next|react-i18next|lingui/i,
-      'internationalization conventions',
-    ),
+    storage: packageSignal('storage', /(?:^|\/)(?:storage|uploads?|media|assets)(?:\/|[^/]*$)/i),
+    'graphql-rpc': packageSignal('graphql-rpc', /(?:^|\/)(?:graphql|trpc|rpc)(?:\/|[^/]*$)/i),
+    i18n: packageSignal('i18n', /(?:^|\/)(?:i18n|locales?|messages|translations?)(?:\/|[^/]*$)/i),
     dependencies: {
       status: 'observed',
       confidence: 'high',
@@ -727,52 +721,21 @@ function detectCapabilities(
       evidence: ['package manifest and lockfile metadata'],
     },
     configs: packageSignal(
-      /^(?:cosmiconfig|convict|config|dotenv|jiti|tsx|ts-node)$/i,
+      'configs',
       /(?:^|\/)(?:config|configs|configuration)(?:\/|[^/]*$)|(?:^|\/)[^/]+\.config\.[cm]?[jt]sx?$/i,
-      /^(?:cosmiconfig|convict|config|dotenv|jiti|tsx|ts-node)(\/|$)/i,
-      'configuration files and loaders',
     ),
     security: packageSignal(
-      /(?:helmet|csrf|rate-limit|ratelimit|clerk|lucia|next-auth|better-auth|sentry|semgrep|zod|valibot|jose|bcrypt|argon2)/i,
+      'security',
       /(?:^|\/)(?:security|middleware|auth|authentication|permissions?|policies?|crypto)(?:\/|[^/]*$)/i,
-      /(?:helmet|csrf|rate-limit|ratelimit|jose|bcrypt|argon2|sentry)(\/|$)/i,
-      'security, validation, and permission conventions',
     ),
-    webhooks: packageSignal(
-      /stripe|svix|webhooks?[-/]?js|inngest|resend|paypal|paddle/i,
-      /(?:^|\/)(?:webhooks?|events?)(?:\/|[^/]*$)/i,
-      /(?:webhooks?|events?)(\/|$)/i,
-      'webhook and event receiver conventions',
-    ),
-    cache: packageSignal(
-      /redis|ioredis|upstash|lru-cache|node-cache|react-cache/i,
-      /(?:^|\/)(?:cache|caching|redis)(?:\/|[^/]*$)/i,
-      /redis|ioredis|upstash|lru-cache|node-cache/i,
-      'cache and key-value storage conventions',
-    ),
-    analytics: packageSignal(
-      /posthog|segment|mixpanel|amplitude|plausible|google-analytics|vercel\/analytics/i,
-      /(?:^|\/)(?:analytics|tracking|telemetry)(?:\/|[^/]*$)/i,
-      /posthog|segment|mixpanel|amplitude|plausible|analytics/i,
-      'product analytics and tracking conventions',
-    ),
-    search: packageSignal(
-      /algoliasearch|elasticsearch|opensearch|meilisearch|typesense|instantsearch/i,
-      /(?:^|\/)(?:search|indexing|indexes)(?:\/|[^/]*$)/i,
-      /algoliasearch|elasticsearch|opensearch|meilisearch|typesense|instantsearch/i,
-      'search and indexing conventions',
-    ),
-    content: packageSignal(
-      /contentlayer|mdx|remark|rehype|sanity|contentful|strapi|payload/i,
-      /(?:^|\/)(?:content|cms|mdx|posts?|articles?)(?:\/|[^/]*$)/i,
-      /contentlayer|remark|rehype|sanity|contentful|strapi|payload/i,
-      'content and CMS conventions',
-    ),
+    webhooks: packageSignal('webhooks', /(?:^|\/)(?:webhooks?|events?)(?:\/|[^/]*$)/i),
+    cache: packageSignal('cache', /(?:^|\/)(?:cache|caching|redis)(?:\/|[^/]*$)/i),
+    analytics: packageSignal('analytics', /(?:^|\/)(?:analytics|tracking|telemetry)(?:\/|[^/]*$)/i),
+    search: packageSignal('search', /(?:^|\/)(?:search|indexing|indexes)(?:\/|[^/]*$)/i),
+    content: packageSignal('content', /(?:^|\/)(?:content|cms|mdx|posts?|articles?)(?:\/|[^/]*$)/i),
     tooling: packageSignal(
-      /^(?:typescript|eslint|prettier|biome|dependency-cruiser|madge|knip|semgrep|snyk|npm-check-updates|lefthook|husky)$/i,
+      'tooling',
       /(?:^|\/)(?:\.github\/workflows|\.husky|\.lefthook|scripts?|tools?)(?:\/|[^/]*$)/i,
-      /^(?:typescript|eslint|prettier|biome|dependency-cruiser|madge|knip|semgrep|snyk|lefthook|husky)(\/|$)/i,
-      'static analysis, formatting, dependency graph, and hook tooling',
     ),
   };
   const scriptNames = Object.keys(scripts).filter((name) =>
@@ -975,6 +938,7 @@ function discoverProjectOnce(
     allFiles,
     projectFiles,
     workspaceNames,
+    workspacePackages: workspaces,
     resolutionRoots: ecosystemRegistry.resolutionRoots(allFiles),
   };
   const sessions = new Map(
@@ -1036,7 +1000,9 @@ function discoverProjectOnce(
     facts.barrelFiles.push(...next.barrelFiles);
     facts.serverActions.push(...next.serverActions);
     facts.clientComponents.push(...next.clientComponents);
-    for (const read of next.environmentReads) {
+    for (const read of backend.collectedFacts.includes('environment')
+      ? next.environmentReads
+      : []) {
       const existing = facts.environmentReads.find((item) => item.name === read.name);
       if (existing) existing.files.push(...read.files);
       else facts.environmentReads.push({ ...read, files: [...read.files] });
@@ -1052,7 +1018,17 @@ function discoverProjectOnce(
     project: {
       ...(metadata.name !== undefined ? { name: metadata.name } : {}),
       ...(metadata.packageManager ? { packageManager: metadata.packageManager } : {}),
-      frameworks: inferFrameworks(dependencies, devDependencies),
+      frameworks: inferFrameworks(
+        {
+          ...dependencies,
+          ...Object.fromEntries(
+            workspaces.flatMap(
+              (p) => p.dependencyDeclarations?.map((d) => [d.name, d.requirement]) ?? [],
+            ),
+          ),
+        },
+        devDependencies,
+      ),
       scripts,
       dependencies,
       devDependencies,
@@ -1063,7 +1039,15 @@ function discoverProjectOnce(
     configs,
     schemas,
     tests: { files: testFiles, scripts: testScripts },
-    capabilities: detectCapabilities(files, modules, dependencies, devDependencies, scripts),
+    ...((metadata.diagnostics?.length ?? 0) > 0 ? { diagnostics: metadata.diagnostics } : {}),
+    capabilities: detectCapabilities(
+      files,
+      modules,
+      dependencies,
+      devDependencies,
+      scripts,
+      workspaces,
+    ),
     git: gitModel(root),
     patterns: {
       clientComponents: facts.clientComponents,

@@ -635,7 +635,7 @@ describe('scanGuard', () => {
     expect(buildConventionsMemory(model).sourceExtensions).toEqual(['.py']);
   });
 
-  it('reports required-call contracts as not applicable to Python modules', () => {
+  it('evaluates required-call contracts on Python modules', () => {
     const root = createProject({
       'pyproject.toml': '',
       'app/handler.py': 'import logging\n',
@@ -657,14 +657,12 @@ describe('scanGuard', () => {
       ],
     });
 
-    expect(report.findings.map((finding) => finding.file)).toEqual(['app/handler.ts']);
-    expect(report.notApplicable).toEqual([
-      {
-        ruleId: 'contract:audit',
-        reason: 'Discovery does not collect calls for these modules.',
-        modules: 2,
-      },
+    expect(report.findings.map((finding) => finding.file)).toEqual([
+      'app/handler.py',
+      'app/handler.ts',
+      'app/worker.py',
     ]);
+    expect(report.notApplicable).toEqual([]);
   });
 
   it('reports package-boundary contracts as not applicable to Python modules', () => {

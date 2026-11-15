@@ -76,7 +76,7 @@ These decisions change what users get from the MVP. The recommended option was c
 | `declarations`                         | Top-level counts: `classes`, `functions` (including async), `types` (PEP 695 `type` statements), `variables` (assignment statements); `interfaces` is 0 |
 | `directives`                           | Empty                                                                                                                                                   |
 
-**Added in Task 04:** Python records also store `pythonImports`, one entry per imported module with its spelling, line, and for `from` imports the imported names (without `*`). `imports` keeps only spellings and `importedSymbols` keeps local bindings, so neither has the original names that Task 05 needs to add derived references (D6). Task 05 resolves from `pythonImports` on every discovery (D18). `parseDiagnostics` is present only when the tree has error nodes.
+**Historical Task 04 representation (superseded by Tasks 03 and 12 of the architecture plan):** Python records also store `pythonImports`, one entry per imported module with its spelling, line, and for `from` imports the imported names (without `*`). `imports` keeps only spellings and `importedSymbols` keeps local bindings, so neither has the original names that Task 05 needs to add derived references (D6). Task 05 resolves from `pythonImports` on every discovery (D18). `parseDiagnostics` is present only when the tree has error nodes.
 
 `declarations` has no consumer outside discovery today, but it is part of the persisted model, so filling it keeps Python records comparable. `importedSymbols` and `calls` feed pack assessment text matching in `src/core/analysis/packs.ts`.
 
@@ -136,19 +136,25 @@ Since none of these are distinguished, the parser does not need to mark block co
 
 ## D8: Rule and contract matrix
 
-| Kind                                       | Python MVP behavior                                                                                                             |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `forbidden-import`                         | Applies. Matching per D7, finding at the import line                                                                            |
-| `client-forbidden-import`                  | Skips Python, since it requires `use client` directives; reported as not applicable (D17)                                       |
-| `import-boundary` `mustNotImport`          | Applies. Matching per D7, finding at the import line                                                                            |
-| `import-boundary` `mustImport`             | Applies. All static imports count (D5); finding is file-level                                                                   |
-| `required-call`                            | Skips Python modules (C1); reported as not applicable (D17)                                                                     |
-| `package-boundary`                         | Skips Python modules (C2), since package membership comes from `package.json` workspaces only; reported as not applicable (D17) |
-| Budgets `lines`, `bytes`                   | Apply unchanged (file-based)                                                                                                    |
-| Budget `imports`                           | Applies. Counts unique references including derived ones (D6)                                                                   |
-| `architecture-cycle` insight               | Applies through the shared graph                                                                                                |
-| `client-server-boundary` insight           | JS-only                                                                                                                         |
-| `undeclared-environment-reference` insight | JS-only. No Python environment extraction in MVP                                                                                |
+| Kind                                       | Current Python behavior                                                                         |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `forbidden-import`                         | Applies. Matching per D7, finding at the import line                                            |
+| `client-forbidden-import`                  | Skips Python, since it requires `use client` directives; reported as not applicable (D17)       |
+| `import-boundary` `mustNotImport`          | Applies. Matching per D7, finding at the import line                                            |
+| `import-boundary` `mustImport`             | Applies. All static imports count (D5); finding is file-level                                   |
+| `required-call`                            | Applies to syntactic dotted calls; missing calls with incomplete facts are not applicable (D26) |
+| `package-boundary`                         | Applies to manifest-backed Python projects; otherwise not applicable                            |
+| Budgets `lines`, `bytes`                   | Apply unchanged (file-based)                                                                    |
+| Budget `imports`                           | Applies. Counts unique references including derived ones (D6)                                   |
+| `architecture-cycle` insight               | Applies through the shared graph                                                                |
+| `client-server-boundary` insight           | JS-only                                                                                         |
+| `undeclared-environment-reference` insight | Applies to supported literal reads; declaration matching stays shared                           |
+
+**Tasks 09–16 (2026-11-15):** the matrix above supersedes the MVP skips from C1/C2. Python now collects calls
+and environment reads; `required-call` applies with D26's incomplete-fact exception.
+`package-boundary` applies to manifest-backed projects, using the nearest root per ecosystem.
+Without manifests it remains not applicable. The environment insight covers supported literal
+reads. Client directives remain unavailable. See `docs/guard.md` for the current matrix.
 
 ## D9: Resolution
 
@@ -206,7 +212,7 @@ With C2 as recommended, a Python-only repository gets:
 - path-based layers, since `layerForPath` already recognizes directories such as `models`, `services`, `db`, `api`, and `config`;
 - some capabilities and packs, because `packageSignal` also matches file paths (for example `auth/`, `db/`, `billing/`) and import names (for example `import stripe` matches the payments regex). Confidence stays at medium or lower without package metadata. Proposals that depend on the `identity` and `persistence` capabilities can therefore appear.
 
-Empty: frameworks, dependencies, scripts, route details, client/server boundaries, environment references, generated rules, and `insights.impactPaths` (which starts only from Next.js entrypoints). Task 08 documents this list.
+**Changed in Tasks 09–16:** manifests now populate dependency/framework metadata, supported entrypoints populate impact paths, calls and environment reads are collected, and layer/persistence boundaries can be proposed. Console scripts remain static target metadata, not executable project checks. Client/server directives remain unavailable.
 
 **Changed in Task 07:** `layerForPath` treated any `app` or `pages` segment as the `routes` layer, which put every module of a Python `app` package (a common layout, used by the FastAPI template) in `routes` and hid its `services`, `db`, and `models` directories. For `.py` files only `routes` and `api` now mark the `routes` layer. JS/TS layers are unchanged and identical on all five fixtures.
 
@@ -394,3 +400,20 @@ for future feature work by D26 and D25; their runtime behavior remains until tho
 Accepted defaults from PLAN.md: incomplete Python call analysis reports not applicable;
 Python-only installation uses pinned npx with Node; later framework support targets
 FastAPI, Flask and Django. These decisions do not enable the later features in tasks 00–08.
+
+## D29–D32: Python features 09–16
+
+- **D29:** manifests are data-only. Preserve npm primary metadata in mixed repositories and
+  retain Python dependency declarations on packages. Preserve requirement strings and markers
+  without solving them. Standard project metadata precedes Poetry and setup.cfg.
+- **D30:** generated layer boundaries consider domain → infrastructure and ui → infrastructure.
+  Up to two existing violating edges are allowed at low confidence; larger counts suppress
+  proposals. Persistence access must be concentrated in at most three infrastructure directories.
+  At most five new contracts are generated; approval and baseline changes remain explicit.
+- **D31:** include basic Django URL modules and directly imported local views in this batch.
+  FastAPI/Flask decorators, literal Starlette Route registrations, console scripts, and
+  **main**.py are supported. Dynamic URL resolution remains outside this subset.
+- **D32:** environment declarations remain root .env.example entries. Settings defaults do not
+  declare variables. Backend fact availability gates environment insights.
+
+Implementation and validation: [tasks 09–16 evidence](09-16-validation.md).

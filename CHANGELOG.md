@@ -12,7 +12,15 @@
 * **model:** modules record `unresolvedImports`, and `insights.importResolution` summarizes resolved, unresolved, and external imports per language.
 * **impact:** impact results include `graph.status` (`complete` or `partial`) with the unresolved imports of affected modules. `doctor` prints the import summary.
 
+* **python:** read Python manifests and requirements as data, recognize frameworks and capabilities, evaluate package boundaries and required calls, record literal environment reads, and detect framework/CLI entrypoints for impact paths. This supersedes MVP decisions C1 and C2; `setup.py` is never executed or interpreted for metadata.
+* **proposals:** propose language-neutral layer and persistence boundaries with stable IDs and evidence. New JS/TS and Python proposals remain pending and never affect exit codes before approval.
+
 ### Behavior changes
+
+* **cache:** discovery cache version 10 invalidates older Python parse facts. Metadata, calls, entrypoints, and environment facts change model fingerprints and can make stored proposals stale.
+* **policy surface:** Python requirements, lockfiles (including `uv.lock`), and tool configuration are protected at any depth. Packaging manifests are now classified as dependency inputs; existing npm classifications are preserved.
+* **python policy:** valid Python modules now participate in `required-call`, manifest-backed modules in `package-boundary`, and supported environment reads in the environment insight. Missing calls with parse diagnostics report not applicable.
+
 
 * **model:** replace the Python-specific `ModuleRecord.pythonImports` field with opaque `parseFacts`, owned by the language backend. Public language IDs and discovery exports remain unchanged. Discovery cache version 9 rejects old cache entries; changed Python model fingerprints make previously stored proposals stale once.
 * **report:** not-applicable explanations for directives and package membership now use language-neutral wording; their counts and applicability are unchanged.

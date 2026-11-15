@@ -12,6 +12,10 @@ afterEach(() => {
 });
 const fake: EcosystemProvider = {
   id: 'fake-project',
+  signals: {
+    frameworks: [{ dependency: 'fake-framework', name: 'Fake Framework' }],
+    capabilities: {},
+  },
   rootMarkers: ['fake.manifest'],
   ignoredDirectories: ['fake-cache'],
   ignoredDirectorySuffixes: ['.fake-cache'],
@@ -26,7 +30,7 @@ const fake: EcosystemProvider = {
     const name = readFileSync(join(root, 'fake.manifest'), 'utf8');
     return {
       name,
-      dependencies: {},
+      dependencies: { 'fake-framework': '1' },
       devDependencies: {},
       scripts: {},
       packages: [{ path: 'packages/lib', name, private: true, scripts: {}, dependencies: [] }],
@@ -52,6 +56,7 @@ it('adds a manifest, package, root marker, ignore rules and cache inputs through
   const project = discoverProject(root, { persistCache: true });
   expect(project.configs).toEqual(['fake.manifest']);
   expect(project.project.name).toBe('first');
+  expect(project.project.frameworks).toEqual(['Fake Framework']);
   expect(project.project.workspacePackages).toMatchObject([
     { path: 'packages/lib', name: 'first' },
   ]);

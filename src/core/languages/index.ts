@@ -47,6 +47,27 @@ export const languageRegistry = createLanguageRegistry(backends);
 export function sourceLanguage(path: string): SourceLanguage | undefined {
   return languageRegistry.forPath(path)?.id as SourceLanguage | undefined;
 }
-export function collectedFacts(path: string): readonly ModuleFact[] {
-  return languageRegistry.forPath(path)?.collectedFacts ?? [];
+export function collectedFacts(
+  path: string,
+  model?: import('../discovery/discovery.js').ProjectModel,
+): readonly ModuleFact[] {
+  const backend = languageRegistry.forPath(path);
+  return (
+    (model && backend?.factsForModule
+      ? backend.factsForModule(path, model)
+      : backend?.collectedFacts) ?? []
+  );
+}
+
+export function packageForModule(
+  model: import('../discovery/discovery.js').ProjectModel,
+  path: string,
+): import('../ecosystems/types.js').WorkspacePackage | undefined {
+  const ecosystem = languageRegistry.forPath(path)?.ecosystem;
+  return model.project.workspacePackages
+    .filter(
+      (p) =>
+        (p.ecosystem ?? 'npm') === ecosystem && (p.path === '.' || path.startsWith(p.path + '/')),
+    )
+    .sort((a, b) => b.path.length - a.path.length)[0];
 }

@@ -1,3 +1,5 @@
+import { packageForModule } from '../index.js';
+import { pythonProjectFacts } from './project-facts.js';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ModuleRecord } from '../../discovery/discovery.js';
@@ -8,7 +10,7 @@ import {
   resolvePythonImports,
   type PythonResolutionIndex,
 } from './python-resolution.js';
-import { emptyProjectFacts, pathMatches } from '../shared.js';
+import { pathMatches } from '../shared.js';
 import type { LanguageBackend } from '../types.js';
 function pythonTestFile(path: string): boolean {
   const segments = path.toLowerCase().split('/');
@@ -37,23 +39,25 @@ function parsePythonModule(root: string, path: string): ModuleRecord | undefined
     imports: [...new Set(parsed.imports.map((fact) => fact.module))].sort(),
     importedSymbols: [...new Set(parsed.importedSymbols)].sort(),
     exports: [],
-    calls: [],
+    calls: parsed.syntax.calls,
     resolvedImports: [],
     resolvedImportMap: {},
     importLines,
     dynamicImports: [],
     declarations: parsed.declarations,
     directives: [],
-    parseFacts: parsed.imports,
+    parseFacts: { imports: parsed.imports, syntax: parsed.syntax },
+    ...(parsed.errorLines.length > 0 ? { incompleteFacts: ['calls' as const] } : {}),
     ...(parsed.errorLines.length > 0 ? { parseDiagnostics: parsed.errorLines } : {}),
   };
 }
 
 function withPythonResolution(module: ModuleRecord, index: PythonResolutionIndex): ModuleRecord {
-  if (!Array.isArray(module.parseFacts)) return module;
+  const facts = module.parseFacts as { imports?: PythonImportFact[] } | undefined;
+  if (!facts?.imports) return module;
   const { canonicalImports, ...resolution } = resolvePythonImports(
     module.path,
-    module.parseFacts as PythonImportFact[],
+    facts.imports,
     index,
   );
   return {
@@ -68,8 +72,14 @@ function nameMatches(name: string, pattern: string): boolean {
 }
 export const pythonBackend = {
   id: 'python' as const,
+  ecosystem: 'python',
   extensions: new Set(['.py']),
-  collectedFacts: ['imports'],
+  collectedFacts: ['imports', 'calls', 'packages', 'environment'],
+  factsForModule(path, model) {
+    return packageForModule(model, path)
+      ? ['imports', 'calls', 'packages', 'environment']
+      : ['imports', 'calls', 'environment'];
+  },
   routeLayerSegments: ['routes', 'api'],
   isTestFile: pythonTestFile,
   classifyFile(path) {
@@ -84,8 +94,11 @@ export const pythonBackend = {
       resolveModules(modules) {
         return modules.map((module) => withPythonResolution(module, index));
       },
-      projectFacts() {
-        return emptyProjectFacts();
+      projectFacts(modules, sourceFiles) {
+        return pythonProjectFacts(
+          modules.filter((module) => sourceFiles.includes(module.path)),
+          context,
+        );
       },
     };
   },

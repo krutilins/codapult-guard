@@ -1,3 +1,4 @@
+import { syntaxFacts, type SyntaxFacts } from './syntax.js';
 import { createRequire } from 'node:module';
 import type { parser as LezerPythonParser } from '@lezer/python';
 
@@ -15,6 +16,7 @@ export interface PythonImportFact {
 }
 
 export interface PythonParseResult {
+  syntax: SyntaxFacts;
   imports: PythonImportFact[];
   /** Local binding names: the alias if present, otherwise the imported name or first segment. */
   importedSymbols: string[];
@@ -177,6 +179,7 @@ export function parsePythonSource(source: string): PythonParseResult {
   const tree = pythonParser().parse(source);
   const starts = lineStarts(source);
   const result: PythonParseResult = {
+    syntax: syntaxFacts(source, tree),
     imports: [],
     importedSymbols: [],
     declarations: { classes: 0, functions: 0, interfaces: 0, types: 0, variables: 0 },

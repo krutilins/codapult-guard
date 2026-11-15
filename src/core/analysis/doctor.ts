@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { summarizeImportResolution, type ImportResolutionSummary } from '../discovery/discovery.js';
+import {
+  discoverProject,
+  summarizeImportResolution,
+  type ImportResolutionSummary,
+} from '../discovery/discovery.js';
 import {
   GUARD_AGENT_FILE,
   GUARD_BASELINE_META_FILE,
@@ -146,6 +150,20 @@ export function diagnoseGuard(root: string): GuardDoctorReport {
     });
   }
   const model = loadProjectModel(root);
+  try {
+    items.push(
+      ...(discoverProject(root, { persistCache: false }).diagnostics ?? []).map((d) => ({
+        ...d,
+        status: 'warning' as const,
+      })),
+    );
+  } catch (error) {
+    items.push({
+      path: '.',
+      status: 'warning',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
   const importResolution = model
     ? (model.insights.importResolution ?? summarizeImportResolution(model.modules))
     : undefined;

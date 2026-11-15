@@ -1,3 +1,5 @@
+import { boundaryProposals, persistenceImport } from './analysis/boundary-proposals.js';
+import { ecosystemRegistry } from './ecosystems/index.js';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
@@ -29,7 +31,7 @@ import {
   discoverProjectWithMetrics,
   findGuardRoot,
 } from './discovery/discovery.js';
-import { languageRegistry } from './languages/index.js';
+import { languageRegistry, packageForModule } from './languages/index.js';
 import { config } from './config.js';
 import { assessGuardPacks, detectGuardPacks } from './analysis/packs.js';
 import { analyzeProjectImpact, type GuardImpactAnalysis } from './analysis/impact.js';
@@ -1560,7 +1562,7 @@ export function buildGuardProposals(
 ): GuardProposalFile {
   const capabilities = Object.keys(model.capabilities);
   const questions: string[] = [];
-  const observedContracts: GuardContract[] = [];
+  const observedContracts: GuardContract[] = boundaryProposals(model);
   if (capabilities.includes('identity')) {
     observedContracts.push({
       id: 'canonical-auth-entrypoint',
@@ -1594,7 +1596,12 @@ export function buildGuardProposals(
         .slice(0, 5),
       status: 'proposed',
       confidence: 'low',
-      evidence: model.capabilities.persistence.evidence,
+      evidence: [
+        ...model.capabilities.persistence.evidence,
+        ...boundaryProposals(model)
+          .filter((c) => c.statement.includes('persistence'))
+          .flatMap((c) => c.evidence ?? []),
+      ],
     });
   }
   if (capabilities.includes('identity')) {
@@ -1721,11 +1728,7 @@ export function buildConventionsMemory(model: ProjectModel): Record<string, unkn
 }
 
 export function buildGeneratedGuardConfig(model: ProjectModel): GuardConfig {
-  const isPersistenceImport = (importPath: string): boolean =>
-    /(?:^|\/)(?:database|db)(?:\/|$)/i.test(importPath) ||
-    /^(?:@prisma\/client|prisma|drizzle-orm|drizzle-kit|typeorm|sequelize|mongoose|knex)(?:\/|$)/i.test(
-      importPath,
-    );
+  const isPersistenceImport = persistenceImport;
   const moduleReferences = (module: ProjectModel['modules'][number]): string[] => [
     ...module.imports,
     ...module.exports,
@@ -1761,7 +1764,7 @@ export function buildGeneratedGuardConfig(model: ProjectModel): GuardConfig {
           },
         ]
       : [];
-  return { ...defaultGuardConfig, rules: proposedRules };
+  return { ...defaultGuardConfig, rules: proposedRules, contracts: boundaryProposals(model) };
 }
 
 export function writeGuardMemory(root: string, model: ProjectModel): void {
@@ -2194,31 +2197,32 @@ function packageSelectorMatches(value: string | undefined, selector: string): bo
 }
 
 function packageForFile(model: ProjectModel, file: string): string | undefined {
-  const packageInfo =
-    model.project.workspacePackages
-      .filter(
-        (workspace) =>
-          workspace.path === '.' ||
-          file === `${workspace.path}/package.json` ||
-          file.startsWith(`${workspace.path}/`),
-      )
-      .sort((left, right) => right.path.length - left.path.length)[0] ?? null;
-  return packageInfo === null ? undefined : (packageInfo.name ?? packageInfo.path);
+  const packageInfo = packageForModule(model, file);
+  return packageInfo ? (packageInfo.name ?? packageInfo.path) : undefined;
 }
 
 function packageForImport(
   model: ProjectModel,
   reference: ModuleImportReference,
+  sourceFile: string,
 ): string | undefined {
   const resolvedPackage = reference.resolved
     ? packageForFile(model, reference.resolved)
     : undefined;
   if (resolvedPackage) return resolvedPackage;
-  return model.project.workspacePackages.find(
+  const ecosystem = languageRegistry.forPath(sourceFile)?.ecosystem;
+  const provider = ecosystemRegistry.providers.find((p) => p.id === ecosystem);
+  const matches = (name: string): boolean =>
+    provider?.packageMatches?.(name, reference.source) ??
+    (name === reference.source || reference.source.startsWith(`${name}/`));
+  const local = model.project.workspacePackages.find(
     (workspace) =>
-      workspace.name === reference.source ||
-      (workspace.name !== undefined && reference.source.startsWith(`${workspace.name}/`)),
-  )?.name;
+      (workspace.ecosystem ?? 'npm') === ecosystem &&
+      workspace.name !== undefined &&
+      matches(workspace.name),
+  );
+  if (local) return local.name;
+  return packageForModule(model, sourceFile)?.dependencies.find(matches);
 }
 
 const REQUIRED_FACTS: Record<GuardRuleKind | Exclude<GuardContractKind, 'guidance'>, ModuleFact> = {
@@ -2230,6 +2234,7 @@ const REQUIRED_FACTS: Record<GuardRuleKind | Exclude<GuardContractKind, 'guidanc
 };
 
 const MISSING_FACT_REASONS: Record<ModuleFact, string> = {
+  environment: 'Discovery does not collect environment reads for these modules.',
   imports: 'Discovery does not collect imports for these modules.',
   calls: 'Discovery does not collect calls for these modules.',
   directives: 'Discovery does not collect directives for these modules.',
@@ -2240,12 +2245,13 @@ const MISSING_FACT_REASONS: Record<ModuleFact, string> = {
 function missingFact(
   kind: GuardRuleKind | Exclude<GuardContractKind, 'guidance'>,
   path: string,
+  model?: ProjectModel,
 ): ModuleFact | undefined {
   const fact = REQUIRED_FACTS[kind];
-  return collectedFacts(path).includes(fact) ? undefined : fact;
+  return collectedFacts(path, model).includes(fact) ? undefined : fact;
 }
 
-type NotApplicableRecorder = (ruleId: string, fact: ModuleFact) => void;
+type NotApplicableRecorder = (ruleId: string, fact: ModuleFact, reason?: string) => void;
 
 function notApplicableCollector(): {
   record: NotApplicableRecorder;
@@ -2253,8 +2259,8 @@ function notApplicableCollector(): {
 } {
   const counts = new Map<string, GuardNotApplicable>();
   return {
-    record: (ruleId, fact) => {
-      const reason = MISSING_FACT_REASONS[fact];
+    record: (ruleId, fact, override) => {
+      const reason = override ?? MISSING_FACT_REASONS[fact];
       const key = `${ruleId}\0${reason}`;
       const entry = counts.get(key) ?? { ruleId, reason, modules: 0 };
       entry.modules += 1;
@@ -2315,7 +2321,7 @@ function scanContracts(
     for (const module of model.modules.filter(
       (item) => (!changed || changed.has(item.path)) && contractAppliesToFile(contract, item.path),
     )) {
-      const fact = missingFact(contract.kind, module.path);
+      const fact = missingFact(contract.kind, module.path, model);
       if (fact) {
         recordNotApplicable?.(`contract:${contract.id}`, fact);
         continue;
@@ -2361,6 +2367,14 @@ function scanContracts(
           contract.mustCall?.some((required) => call === required || call.endsWith(`.${required}`)),
         )
       ) {
+        if (module.incompleteFacts?.includes('calls')) {
+          recordNotApplicable?.(
+            `contract:${contract.id}`,
+            'calls',
+            'Call analysis is incomplete because the module has parse diagnostics.',
+          );
+          continue;
+        }
         findings.push({
           ruleId: `contract:${contract.id}`,
           severity,
@@ -2381,7 +2395,7 @@ function scanContracts(
           continue;
         }
         for (const reference of moduleImportReferences(module)) {
-          const targetPackage = packageForImport(model, reference);
+          const targetPackage = packageForImport(model, reference, module.path);
           if (
             !contract.mustNotImportPackages?.some((selector) =>
               packageSelectorMatches(targetPackage, selector),

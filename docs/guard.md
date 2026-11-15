@@ -1011,9 +1011,9 @@ Other limits of the graph:
 - Each language has its own graph. Guard sees no dependency between a TypeScript frontend and a
   Python API that it calls over HTTP, or between services connected through a task queue or message
   broker. Impact analysis stops at the language boundary.
-- `insights.impactPaths` starts only from Next.js route handlers and server actions. Python modules
-  appear there only when a JavaScript or TypeScript entrypoint reaches them, which the previous point
-  rules out in practice. The `dependents` and `dependencies` lists of `impact` cover Python modules.
+- `insights.impactPaths` starts from supported Next.js handlers/server actions and Python
+  framework/CLI entrypoints. Dynamic registrations and indirect Django URL configurations can
+  remain absent. The `dependents` and `dependencies` lists also cover Python modules.
 - For Python modules, only `routes` and `api` directories mark the `routes` layer. `app` and `pages`
   are Next.js route directories, while `app` is a common name for a Python package.
 
@@ -1093,18 +1093,18 @@ without an environment.
 
 ### Rules, contracts, and budgets
 
-| Kind                                       | Python behavior                                                      |
-| ------------------------------------------ | -------------------------------------------------------------------- |
-| `forbidden-import`                         | Applies, with findings at the import line                            |
-| `import-boundary` `mustNotImport`          | Applies, with findings at the import line                            |
-| `import-boundary` `mustImport`             | Applies; every static import counts                                  |
-| Budgets `lines`, `bytes`, `imports`        | Apply; `imports` counts written and derived references               |
-| `client-forbidden-import`                  | Skipped and reported as not applicable (no `"use client"` in Python) |
-| `required-call`                            | Skipped and reported as not applicable (calls are not collected)     |
-| `package-boundary`                         | Skipped and reported as not applicable (no `package.json` workspace) |
-| `architecture-cycle` insight               | Applies                                                              |
-| `client-server-boundary` insight           | JavaScript and TypeScript only                                       |
-| `undeclared-environment-reference` insight | JavaScript and TypeScript only                                       |
+| Kind                                       | Python behavior                                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `forbidden-import`                         | Applies, with findings at the import line                                                  |
+| `import-boundary` `mustNotImport`          | Applies, with findings at the import line                                                  |
+| `import-boundary` `mustImport`             | Applies; every static import counts                                                        |
+| Budgets `lines`, `bytes`, `imports`        | Apply; `imports` counts written and derived references                                     |
+| `client-forbidden-import`                  | Skipped and reported as not applicable (no `"use client"` in Python)                       |
+| `required-call`                            | Applies to dotted syntactic calls; a missing call with parse diagnostics is not applicable |
+| `package-boundary`                         | Applies within manifest-backed Python projects; otherwise not applicable                   |
+| `architecture-cycle` insight               | Applies                                                                                    |
+| `client-server-boundary` insight           | JavaScript and TypeScript only                                                             |
+| `undeclared-environment-reference` insight | Applies to supported literal environment reads                                             |
 
 Pattern matching for Python imports is described in
 [Python imports in rules and contracts](#python-imports-in-rules-and-contracts). Skipped checks
@@ -1121,19 +1121,84 @@ Some capabilities and packs can appear, because their signals also match file pa
 `auth/` or `billing/` and import names such as `stripe`. Without package metadata their confidence stays at medium or lower. Proposals that depend on the
 `identity` and `persistence` capabilities can still appear.
 
-These parts stay empty for Python: frameworks, dependencies, scripts, route details, client and
-server boundaries, environment references, generated rules, and `insights.impactPaths`, which
-starts only from Next.js entrypoints.
+Python manifests supply project names, dependency evidence, package-manager hints, and nested
+project packages. Framework tables recognize Django, FastAPI, Flask, Starlette, Celery, and
+SQLAlchemy. Capability confidence is high only when dependency evidence accompanies import or
+file evidence. In mixed repositories root npm metadata keeps its existing meaning; Python
+packages retain their own metadata.
+
+FastAPI and Flask HTTP decorators, literal Starlette `Route(...)` registrations, Django
+`urls.py` and directly imported local view modules referenced by literal path registrations, `[project.scripts]` targets, and `__main__.py`
+provide entrypoints for impact paths. Route details describe source files and known methods,
+not a complete HTTP URL map. Computed methods stay unknown. Test modules do not become
+production entrypoints.
+
+Generated boundary proposals preserve observed `domain` → `infrastructure` and `ui` →
+`infrastructure` separation, and concentrated persistence access. Up to two existing violating
+edges can produce a low-confidence proposal with import-line evidence; larger counts suppress
+it. Persistence access must be concentrated in at most three infrastructure directories.
+Generation is capped at five new boundary contracts and IDs depend on normalized content.
+Proposals remain pending until approved and do not affect check exit codes. Approval does not
+change the baseline automatically.
+
+### Manifest and package behavior
+
+Guard reads `[project]` dependencies, extras, scripts, `[dependency-groups]` and group includes,
+Poetry dependency tables, `setup.cfg` metadata/install requirements, and `requirements*.txt`.
+Standard project metadata takes precedence over Poetry, then `setup.cfg`; requirements add
+supplemental declarations. Dependency groups and development/test/lint/docs extras or files are
+development dependencies. Other extras remain dependencies. Names are normalized with PEP 503;
+written names, requirements, groups, and sources remain in package evidence. Markers, extras,
+and Poetry constraints are recorded without resolving or evaluating them.
+
+Local requirements includes must remain inside the discovered Guard root, including after
+symlink resolution. Cycles and unreadable or malformed inputs produce `doctor` warnings.
+Named URL/editable requirements are recorded without fetching them; unnamed URLs are skipped.
+The existing discovery file-size limit applies. `setup.py` marks a project and can be statically
+analyzed as source, but is never interpreted for metadata or executed.
+
+Lockfile preference is uv, Poetry, PDM, then Pipenv; requirements-only projects report pip.
+Competing lockfiles produce a warning. Console entrypoint targets are metadata, not executable
+project-check commands. Python tool execution remains separate work.
+
+A package boundary means the nearest enclosing manifest-backed Python project, not an
+`__init__.py` directory. Local resolved paths identify target packages first; declared
+external distribution names use normalized matching. Requirements-only repositories have no
+package membership. JS/TS and Python package ownership remain separate in mixed projects.
+Import/distribution mappings such as `PIL` → `pillow` are not inferred: a prohibition on
+`pillow` cannot catch `import PIL`; use a `forbidden-import` pattern on `PIL` instead.
+
+### Calls and environment reads
+
+Call contracts match written dotted callee names (`validate`, `self.validate`,
+`client.auth.check`). Aliases are not resolved for call contracts, and a chained expression
+such as `get_client().check()` does not supply a dotted `check` call. Decorator application is
+recorded separately. A missing required call with incomplete parser facts is not applicable;
+a required call actually observed still passes. Parse diagnostics can include parser limitations.
+
+Environment analysis recognizes literal uppercase names in `os.environ["NAME"]`,
+`os.environ.get("NAME")`, `os.getenv("NAME")`, and `environ`/`getenv` imported from `os`,
+including explicit import aliases. Names are deduplicated with contributing files. Computed
+keys and unrelated bindings are ignored. Declarations come from the root `.env.example`;
+`settings.py` fallback values do not declare a variable. Environment insights require the
+backend's environment fact.
+
+### Protected Python paths
+
+At any depth, packaging manifests, `requirements*.txt`, `uv.lock`, `poetry.lock`, `pdm.lock`,
+`Pipfile`, and `Pipfile.lock` are protected dependency inputs. Tool configuration includes
+`ruff.toml`, `.ruff.toml`, `mypy.ini`, `.mypy.ini`, `pyrightconfig.json`, `pytest.ini`, `tox.ini`,
+`noxfile.py`, `conftest.py`, `.coveragerc`, and `.python-version`. Changes are reported in the
+policy surface and fail verification with `--fail-on-protected-changes`.
 
 ### Not implemented
 
-- Calls, decorators, and environment variable reads, so `required-call` contracts and the
-  environment insight do not cover Python.
-- Python package membership for `package-boundary` contracts.
-- Dependencies from `pyproject.toml` or `requirements*.txt`, framework detection (Django, FastAPI,
-  Flask), and Python entrypoints for impact paths.
 - Running Python tools such as Ruff, mypy, or pytest as verification adapters.
-- Dynamic imports with computed names and `sys.path` changes made at runtime.
+- Dynamic imports with computed names, runtime `sys.path` changes, and distribution-to-import mapping tables.
+- Interprocedural call resolution or flow-sensitive alias/shadowing analysis.
+- Environment reads through `pydantic-settings`, `django-environ`, or other settings libraries;
+  no findings do not imply full environment coverage.
+- Dynamic route registration, Django string targets/indirect includes, or complete URL composition.
 
 ## AI-agent and MCP workflow
 
@@ -1295,7 +1360,7 @@ pnpm exec codapult-guard check --changed --sarif > guard-results.sarif
 ### Checks that do not apply
 
 Some checks need facts that discovery does not collect for every module. A `required-call`
-contract needs calls, a `package-boundary` contract needs `package.json` workspace membership, and a
+contract needs calls, a `package-boundary` contract needs ecosystem package membership, and a
 `client-forbidden-import` rule needs `"use client"` directives. When a module in scope lacks the
 fact, the check skips that module and the report lists it under `notApplicable`, with the rule ID,
 the reason, and the number of skipped modules. `check` and `audit` print these entries as a short

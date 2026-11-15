@@ -138,7 +138,7 @@ function describeLanguageBackend(
       if (backend.collectedFacts.includes('directives'))
         expect(module.directives).toContain('use client');
       else expect(module.directives).toEqual([]);
-      expect(backend.collectedFacts.includes('packages')).toBe(backend.id === 'js-ts');
+      expect(backend.collectedFacts.includes('packages')).toBe(backend.id !== 'fake');
     });
   });
 }
@@ -157,7 +157,7 @@ describeLanguageBackend(
 describeLanguageBackend(
   python,
   {
-    'main.py': 'from lib import value\nimport other\n',
+    'main.py': 'from lib import value\nimport other\nvalidate()\n',
     'lib/__init__.py': '',
     'lib/value.py': '',
     'other.ts': '',

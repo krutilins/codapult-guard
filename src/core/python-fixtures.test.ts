@@ -98,7 +98,11 @@ describe('Python fixtures', () => {
         to: 'packages/billing/src/company/billing/service.py',
       },
     ]);
-    expect(project.project.workspacePackages).toEqual([]);
+    expect(project.project.workspacePackages.map((p) => p.path)).toEqual([
+      'packages/billing',
+      'packages/users',
+      'services/worker',
+    ]);
     expect(unresolved(project)).toEqual([]);
   });
 
@@ -234,6 +238,8 @@ describe('Python fixtures', () => {
     ).toEqual([
       ['budget:module-imports', 'shop/api/routes.py', 1, 'budget:imports'],
       ['budget:module-imports', 'shop/services/orders.py', 1, 'budget:imports'],
+      ['contract:orders-audit', 'shop/services/__init__.py', 1, 'contract'],
+      ['contract:orders-audit', 'shop/services/orders.py', 1, 'contract'],
       // The written module and the derived submodule are separate references (D6).
       ['contract:services-no-api', 'shop/services/orders.py', 6, 'shop.api'],
       ['contract:services-no-api', 'shop/services/orders.py', 6, 'shop.api.routes'],
@@ -243,16 +249,6 @@ describe('Python fixtures', () => {
         ruleId: 'client-no-db',
         reason: 'Discovery does not collect directives for these modules.',
         modules: 9,
-      },
-      {
-        ruleId: 'contract:no-db-package',
-        reason: 'Discovery does not collect package membership for these modules.',
-        modules: 11,
-      },
-      {
-        ruleId: 'contract:orders-audit',
-        reason: 'Discovery does not collect calls for these modules.',
-        modules: 2,
       },
     ]);
   });

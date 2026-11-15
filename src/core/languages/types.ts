@@ -3,13 +3,14 @@ import type {
   ProjectFileRecord,
   ImportResolutionStatus,
 } from '../discovery/discovery.js';
-export type ModuleFact = 'imports' | 'calls' | 'directives' | 'packages';
+export type ModuleFact = 'imports' | 'calls' | 'directives' | 'packages' | 'environment';
 /** Static inputs for one discovery; implementations must never execute project code. */
 export interface LanguageContext {
   root: string;
   allFiles: string[];
   projectFiles: Set<string>;
   workspaceNames: ReadonlySet<string>;
+  workspacePackages?: import('../discovery/discovery.js').ProjectModel['project']['workspacePackages'];
   resolutionRoots: Record<string, string[]>;
 }
 export interface ImportReference {
@@ -36,7 +37,12 @@ export interface LanguageSession {
 }
 export interface LanguageBackend {
   readonly id: string;
+  readonly ecosystem?: string;
   readonly extensions: ReadonlySet<string>;
+  factsForModule?(
+    path: string,
+    model: import('../discovery/discovery.js').ProjectModel,
+  ): readonly ModuleFact[];
   readonly collectedFacts: readonly ModuleFact[];
   classifyFile(path: string): ProjectFileRecord['kind'];
   readonly routeLayerSegments: readonly string[];

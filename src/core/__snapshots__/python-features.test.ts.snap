@@ -1,0 +1,214 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`preserves npm protected path patterns and historical classifications 1`] = `
+[
+  {
+    "kind": "dependency-input",
+    "pattern": "package.json",
+  },
+  {
+    "kind": "dependency-input",
+    "pattern": "**/package.json",
+  },
+  {
+    "kind": "dependency-input",
+    "pattern": "pnpm-lock.yaml",
+  },
+  {
+    "kind": "dependency-input",
+    "pattern": "**/pnpm-lock.yaml",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "yarn.lock",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/yarn.lock",
+  },
+  {
+    "kind": "dependency-input",
+    "pattern": "package-lock.json",
+  },
+  {
+    "kind": "dependency-input",
+    "pattern": "**/package-lock.json",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "npm-shrinkwrap.json",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/npm-shrinkwrap.json",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "bun.lock",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/bun.lock",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "bun.lockb",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/bun.lockb",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "pnpm-workspace.yaml",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/pnpm-workspace.yaml",
+  },
+  {
+    "kind": "dependency-input",
+    "pattern": ".npmrc",
+  },
+  {
+    "kind": "dependency-input",
+    "pattern": "**/.npmrc",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": ".pnpmfile.cjs",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/.pnpmfile.cjs",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "pnpmfile.cjs",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/pnpmfile.cjs",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": ".yarnrc",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/.yarnrc",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": ".yarnrc.yml",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/.yarnrc.yml",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": ".pnp.cjs",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/.pnp.cjs",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": ".pnp.loader.mjs",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "**/.pnp.loader.mjs",
+  },
+  {
+    "kind": "ignore-config",
+    "pattern": ".npmignore",
+  },
+  {
+    "kind": "ignore-config",
+    "pattern": ".prettierignore",
+  },
+  {
+    "kind": "ignore-config",
+    "pattern": ".eslintignore",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "eslint.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": ".eslintrc*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "biome.json",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "biome.jsonc",
+  },
+  {
+    "kind": "ignore-config",
+    "pattern": ".biomeignore",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "prettier.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": ".prettierrc*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "tsconfig.json",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "vitest.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "jest.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "playwright.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "next.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "babel.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": ".babelrc*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "webpack.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "stylelint.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": ".stylelintrc*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "nyc.config.*",
+  },
+  {
+    "kind": "tool-config",
+    "pattern": "tsconfig*.json",
+  },
+]
+`;

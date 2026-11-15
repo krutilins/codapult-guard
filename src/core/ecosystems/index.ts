@@ -12,6 +12,7 @@ export { pythonProjectRoots } from './python/index.js';
 export type { EcosystemProvider, EcosystemContext, EcosystemProject } from './types.js';
 export interface EcosystemRegistry {
   rootMarkers: string[];
+  providers: readonly EcosystemProvider[];
   ignoredDirectory(name: string): boolean;
   isConfigFile(path: string): boolean;
   resolutionInput(path: string): ResolutionInput;
@@ -24,6 +25,7 @@ export function createEcosystemRegistry(
   providers: readonly EcosystemProvider[],
 ): EcosystemRegistry {
   return {
+    providers,
     rootMarkers: [...new Set(providers.flatMap((provider) => provider.rootMarkers))],
     ignoredDirectory(name: string): boolean {
       return providers.some(
@@ -62,7 +64,7 @@ export function createEcosystemRegistry(
     readProject(context: EcosystemContext): EcosystemProject {
       const projects = providers.flatMap((provider) => {
         const project = provider.readProject(context);
-        return project ? [project] : [];
+        return project !== undefined ? [project] : [];
       });
       // Registry order preserves root npm metadata precedence. Additional providers contribute packages.
       const primary = projects.at(0);
@@ -74,6 +76,16 @@ export function createEcosystemRegistry(
         dependencies: primary?.dependencies ?? {},
         devDependencies: primary?.devDependencies ?? {},
         scripts: primary?.scripts ?? {},
+        ...(projects.some((p) => (p.diagnostics?.length ?? 0) > 0)
+          ? {
+              diagnostics: projects
+                .flatMap((p) => p.diagnostics ?? [])
+                .sort((a, b) => {
+                  const path = a.path.localeCompare(b.path);
+                  return path !== 0 ? path : a.message.localeCompare(b.message);
+                }),
+            }
+          : {}),
         packages: projects
           .flatMap((project) => project.packages)
           .sort((a, b) => a.path.localeCompare(b.path)),

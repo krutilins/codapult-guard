@@ -1,6 +1,6 @@
 # Language-agnostic architecture plan
 
-**Status:** In progress. Tasks 00–08 completed on 2026-11-14; tasks 09–19 remain.
+**Status:** In progress. Tasks 00–08 completed on 2026-11-14 and tasks 09–16 on 2026-11-15; tasks 17–19 remain.
 
 **Starting point:** the Python MVP is complete and merged with main (see [tasks/python-support-plan.md](tasks/python-support-plan.md))  
 **Tasks:** one file per commit in [tasks/](tasks/), indexed under [Work breakdown](#work-breakdown)
@@ -114,14 +114,14 @@ Each task is one commit that keeps all gates green. Python task IDs in `tasks/py
 | 06  | [Remove language branches from shared code](tasks/06-neutral-consumers.md)                       | 03, 05     | 1–2 days | Done        |
 | 07  | [Add the conformance suite and boundary test](tasks/07-language-conformance.md)                  | 06         | 1 day    | Done        |
 | 08  | [Add the ecosystem interface and extract npm](tasks/08-ecosystem-provider.md)                    | 07         | 2–3 days | Done        |
-| 09  | [Read Python manifests](tasks/09-python-manifests.md)                                            | 08         | 2–3 days | Not started |
-| 10  | [Support `package-boundary` on Python](tasks/10-python-package-boundary.md)                      | 09         | 1–2 days | Not started |
-| 11  | [Move protected paths into ecosystems](tasks/11-protected-paths.md)                              | 08         | 1 day    | Not started |
-| 12  | [Support `required-call` on Python](tasks/12-python-calls.md)                                    | 07         | 2–3 days | Not started |
-| 13  | [Support the environment insight on Python](tasks/13-python-environment.md)                      | 07         | 1–2 days | Not started |
-| 14  | [Turn framework and capability signals into data](tasks/14-signal-tables.md)                     | 09         | 2–3 days | Not started |
-| 15  | [Add entrypoints for Python impact paths](tasks/15-python-entrypoints.md)                        | 12, 14     | 2–4 days | Not started |
-| 16  | [Generate language-neutral proposals](tasks/16-neutral-proposals.md)                             | 14         | 2–3 days | Not started |
+| 09  | [Read Python manifests](tasks/09-python-manifests.md)                                            | 08         | 2–3 days | Done        |
+| 10  | [Support `package-boundary` on Python](tasks/10-python-package-boundary.md)                      | 09         | 1–2 days | Done        |
+| 11  | [Move protected paths into ecosystems](tasks/11-protected-paths.md)                              | 08         | 1 day    | Done        |
+| 12  | [Support `required-call` on Python](tasks/12-python-calls.md)                                    | 07         | 2–3 days | Done        |
+| 13  | [Support the environment insight on Python](tasks/13-python-environment.md)                      | 07         | 1–2 days | Done        |
+| 14  | [Turn framework and capability signals into data](tasks/14-signal-tables.md)                     | 09         | 2–3 days | Done        |
+| 15  | [Add entrypoints for Python impact paths](tasks/15-python-entrypoints.md)                        | 12, 14     | 2–4 days | Done        |
+| 16  | [Generate language-neutral proposals](tasks/16-neutral-proposals.md)                             | 14         | 2–3 days | Done        |
 | 17  | [Add project checks per ecosystem](tasks/17-project-checks.md)                                   | 08         | 3–5 days | Not started |
 | 18  | [Support Python-only installs and CI](tasks/18-python-ci.md)                                     | 17         | 1–2 days | Not started |
 | 19  | [Validate on real projects and publish docs](tasks/19-validation-and-docs.md)                    | 10–18      | 2–3 days | Not started |

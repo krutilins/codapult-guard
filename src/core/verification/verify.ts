@@ -1,3 +1,4 @@
+import { ecosystemRegistry } from '../ecosystems/index.js';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
@@ -108,72 +109,14 @@ export interface GuardVerificationResult {
   incompleteStages?: string[] | undefined;
 }
 
-const DEFAULT_PROTECTED_PATHS = [
-  '.codapult/guard/**',
-  '.github/workflows/**',
-  'CODEOWNERS',
-  '.github/CODEOWNERS',
-  'package.json',
-  '**/package.json',
-  'pyproject.toml',
-  '**/pyproject.toml',
-  'setup.cfg',
-  '**/setup.cfg',
-  'setup.py',
-  '**/setup.py',
-  'pnpm-lock.yaml',
-  '**/pnpm-lock.yaml',
-  'yarn.lock',
-  '**/yarn.lock',
-  'package-lock.json',
-  '**/package-lock.json',
-  'npm-shrinkwrap.json',
-  '**/npm-shrinkwrap.json',
-  'bun.lock',
-  '**/bun.lock',
-  'bun.lockb',
-  '**/bun.lockb',
-  'pnpm-workspace.yaml',
-  '**/pnpm-workspace.yaml',
-  '.npmrc',
-  '**/.npmrc',
-  '.pnpmfile.cjs',
-  '**/.pnpmfile.cjs',
-  'pnpmfile.cjs',
-  '**/pnpmfile.cjs',
-  '.yarnrc',
-  '**/.yarnrc',
-  '.yarnrc.yml',
-  '**/.yarnrc.yml',
-  '.pnp.cjs',
-  '**/.pnp.cjs',
-  '.pnp.loader.mjs',
-  '**/.pnp.loader.mjs',
-  '.gitignore',
-  '.ignore',
-  '.dockerignore',
-  '.npmignore',
-  '.prettierignore',
-  '.eslintignore',
-  'eslint.config.*',
-  '.eslintrc*',
-  'biome.json',
-  'biome.jsonc',
-  '.biomeignore',
-  'prettier.config.*',
-  '.prettierrc*',
-  'tsconfig.json',
-  'vitest.config.*',
-  'jest.config.*',
-  'playwright.config.*',
-  'next.config.*',
-  'babel.config.*',
-  '.babelrc*',
-  'webpack.config.*',
-  'stylelint.config.*',
-  '.stylelintrc*',
-  'nyc.config.*',
-  'tsconfig*.json',
+const SHARED_PROTECTED_PATHS = [
+  { pattern: '.codapult/guard/**', kind: 'guard-policy' },
+  { pattern: '.github/workflows/**', kind: 'ci-workflow' },
+  { pattern: 'CODEOWNERS', kind: 'ownership' },
+  { pattern: '.github/CODEOWNERS', kind: 'ownership' },
+  { pattern: '.gitignore', kind: 'ignore-config' },
+  { pattern: '.ignore', kind: 'ignore-config' },
+  { pattern: '.dockerignore', kind: 'ignore-config' },
 ];
 
 function matchesPathPattern(path: string, pattern: string): boolean {
@@ -195,6 +138,7 @@ function matchesPathPattern(path: string, pattern: string): boolean {
   return new RegExp(`${expression}$`).test(path);
 }
 
+// Suppression comments may occur outside registered language source files.
 const SOURCE_EXTENSIONS = new Set([
   '.js',
   '.jsx',
@@ -346,23 +290,10 @@ function getPolicySurface(
   const baseChangedPaths = changedFilesSince(root, baseRef);
   const changedPaths = baseChangedPaths ?? [];
   const suppressionMarkers = addedSuppressionMarkers(root, baseRef);
-  const defaultEntries = DEFAULT_PROTECTED_PATHS.map((pattern) => ({
-    pattern,
-    kind: pattern.startsWith('.github/workflows/')
-      ? 'ci-workflow'
-      : pattern.startsWith('.codapult/guard/')
-        ? 'guard-policy'
-        : pattern.toLowerCase().includes('codeowners')
-          ? 'ownership'
-          : ['package.json', 'lock.yaml', 'lock.json', '.npmrc'].some((part) =>
-                pattern.includes(part),
-              )
-            ? 'dependency-input'
-            : pattern.includes('ignore')
-              ? 'ignore-config'
-              : 'tool-config',
-    severity: 'error' as const,
-  }));
+  const defaultEntries = [
+    ...SHARED_PROTECTED_PATHS,
+    ...ecosystemRegistry.providers.flatMap((p) => p.protectedPaths ?? []),
+  ].map((entry) => ({ ...entry, severity: 'error' as const }));
   const entries = [
     ...defaultEntries,
     ...configPaths.map((pattern) => ({ pattern, kind: 'custom', severity: 'error' as const })),

@@ -4,7 +4,7 @@
 **Estimate:** 1–2 days  
 **Depends on:** Task 07  
 **Commit:** `feat(python): record environment variable reads`  
-**Status:** Not started
+**Status:** Done (2026-11-15). See [implementation and validation evidence](09-16-validation.md).
 
 ## Goal
 

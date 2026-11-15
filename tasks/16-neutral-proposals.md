@@ -4,7 +4,7 @@
 **Estimate:** 2–3 days  
 **Depends on:** Task 14  
 **Commit:** `feat(proposals): propose import boundaries from observed layers`  
-**Status:** Not started
+**Status:** Done (2026-11-15). See [implementation and validation evidence](09-16-validation.md).
 
 ## Goal
 

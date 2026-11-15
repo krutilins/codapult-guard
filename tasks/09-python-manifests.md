@@ -4,7 +4,8 @@
 **Estimate:** 2–3 days  
 **Depends on:** Task 08  
 **Commit:** `feat(python): read project metadata from manifests`  
-**Status:** Not started  
+**Status:** Done (2026-11-15). See [implementation and validation evidence](09-16-validation.md).
+
 **Decision:** D25, which reverses C2
 
 ## Goal

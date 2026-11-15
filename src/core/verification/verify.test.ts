@@ -452,6 +452,21 @@ describe('runGuardVerification', () => {
     );
   });
 
+  it('blocks a uv.lock change as a dependency input', () => {
+    const { root, base } = createGitPolicyRoot({ 'uv.lock': 'version = 1\n' });
+    writeFileSync(join(root, 'uv.lock'), 'version = 2\n');
+    const result = runGuardVerification(root, {
+      policyBase: base,
+      failOnProtectedChanges: true,
+      projectChecks: false,
+      tools: 'off',
+    });
+    expect(result.errorCode).toBe('GUARD_PROTECTED_PATH_CHANGED');
+    expect(result.policySurface?.changes).toContainEqual(
+      expect.objectContaining({ path: 'uv.lock', kind: 'dependency-input' }),
+    );
+  });
+
   it('checks proposed code against base policy without granting approval to policy changes', () => {
     const baseRule = {
       id: 'forbidden-import',

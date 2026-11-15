@@ -18,6 +18,8 @@ it.each(['python', 'js-ts'])('loads only the %s parser in a fresh process', (lan
     join(project, language === 'python' ? 'main.py' : 'main.ts'),
     language === 'python' ? 'import os\n' : 'export const value = 1;\n',
   );
+  if (language === 'python')
+    writeFileSync(join(project, 'pyproject.toml'), '[project]\nname="app"\n');
   const source = pathToFileURL(resolve(import.meta.dirname, '../..')).href + '/';
   const packageUrl = pathToFileURL(resolve(import.meta.dirname, '../../../package.json')).href;
   // A test-only loader compiles source in the child, so this test never relies on a prior build.
@@ -49,10 +51,14 @@ it.each(['python', 'js-ts'])('loads only the %s parser in a fresh process', (lan
     const { discoverProject } = await import(${JSON.stringify(`${source}core/discovery/discovery.ts`)});
     discoverProject(${JSON.stringify(project)}, {persistCache: false});
     const cache = Object.keys(createRequire(${JSON.stringify(packageUrl)}).cache);
-    console.log(JSON.stringify({python: cache.some((path) => path.includes('/@lezer/python/')), jsTs: cache.some((path) => path.includes('/ts-morph/'))}));
+    console.log(JSON.stringify({toml: cache.some(path => path.includes('/smol-toml/')), python: cache.some((path) => path.includes('/@lezer/python/')), jsTs: cache.some((path) => path.includes('/ts-morph/'))}));
   `;
   const result = JSON.parse(
     execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }),
-  ) as { python: boolean; jsTs: boolean };
-  expect(result).toEqual({ python: language === 'python', jsTs: language === 'js-ts' });
+  ) as { toml: boolean; python: boolean; jsTs: boolean };
+  expect(result).toEqual({
+    toml: language === 'python',
+    python: language === 'python',
+    jsTs: language === 'js-ts',
+  });
 });

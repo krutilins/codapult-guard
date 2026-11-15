@@ -393,8 +393,9 @@ function projectFacts(
 }
 export const jsTsBackend = {
   id: 'js-ts' as const,
+  ecosystem: 'npm',
   extensions: JS_TS_SOURCE_EXTENSIONS,
-  collectedFacts: ['imports', 'calls', 'directives', 'packages'],
+  collectedFacts: ['imports', 'calls', 'directives', 'packages', 'environment'],
   routeLayerSegments: ['app', 'pages', 'routes', 'api'],
   isTestFile(path) {
     return path.toLowerCase().split('/').includes('__tests__') || /\.(?:test|spec)\./.test(path);

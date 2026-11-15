@@ -67,16 +67,17 @@ const scenarios = {
           id: 'orders-audit',
           statement: 'Order services call audit.',
           kind: 'required-call',
-          scope: ['shop/services'],
+          scope: ['shop/services/orders.py'],
           mustCall: ['audit'],
           status: 'active',
         },
       ],
     );
     const clean = json(project, ['check', '--json']);
-    if (clean.code !== 0) fail(`clean check exited ${clean.code}`);
-    if (clean.value.report.notApplicable?.[0]?.ruleId !== 'contract:orders-audit')
-      fail('required-call was not reported as not applicable');
+    if (!clean.value.report.findings.some((item) => item.ruleId === 'contract:orders-audit'))
+      fail('required-call did not detect the missing audit call');
+    if (clean.value.report.notApplicable?.some((item) => item.ruleId === 'contract:orders-audit'))
+      fail('required-call unexpectedly reported not applicable');
 
     const injected = join(project, 'shop/api/admin.py');
     writeFileSync(injected, 'from ..db.session import save\n');
@@ -90,10 +91,12 @@ const scenarios = {
       ?.locations?.[0]?.physicalLocation;
     if (location?.artifactLocation.uri !== 'shop/api/admin.py' || location.region.startLine !== 1)
       fail('SARIF does not locate the Python finding');
-    if (sarif.runs[0].invocations?.[0]?.toolExecutionNotifications?.length !== 1)
-      fail('SARIF does not list the skipped check');
+    if (!sarif.runs[0].results.some((item) => item.ruleId === 'contract:orders-audit'))
+      fail('SARIF does not list the required-call finding');
 
     rmSync(injected);
+    const orders = join(project, 'shop/services/orders.py');
+    writeFileSync(orders, readFileSync(orders, 'utf8') + '\naudit()\n');
     if (run(project, ['check', '--json']).code !== 0) fail('check did not return to clean');
 
     const impact = json(project, ['impact', 'shop/db/session.py', '--json']).value;

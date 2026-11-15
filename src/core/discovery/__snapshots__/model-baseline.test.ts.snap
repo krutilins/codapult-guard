@@ -2305,6 +2305,219 @@ exports[`fixture model and policy baseline > python-app 1`] = `
       "severity": "error",
     },
     {
+      "file": "shop/__init__.py",
+      "fingerprint": "contract-required-call|calls|shop/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "shop/api/__init__.py",
+      "fingerprint": "contract-required-call|calls|shop/api/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "shop/api/routes.py",
+      "fingerprint": "contract-required-call|calls|shop/api/routes.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "shop/db/__init__.py",
+      "fingerprint": "contract-required-call|calls|shop/db/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "shop/db/session.py",
+      "fingerprint": "contract-required-call|calls|shop/db/session.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "shop/schemas.py",
+      "fingerprint": "contract-required-call|calls|shop/schemas.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "shop/services/__init__.py",
+      "fingerprint": "contract-required-call|calls|shop/services/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "shop/services/orders.py",
+      "fingerprint": "contract-required-call|calls|shop/services/orders.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "shop/settings/config.py",
+      "fingerprint": "contract-required-call|calls|shop/settings/config.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "tests/conftest.py",
+      "fingerprint": "contract-required-call|calls|tests/conftest.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "tests/test_orders.py",
+      "fingerprint": "contract-required-call|calls|tests/test_orders.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "shop/__init__.py",
+      "fingerprint": "contract-package|packages|shop/__init__.py|.services.orders|shop",
+      "importPath": ".services.orders",
+      "line": 3,
+      "message": "packages",
+      "resolvedPath": "shop/services/orders.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/api/routes.py",
+      "fingerprint": "contract-package|packages|shop/api/routes.py|..schemas|shop",
+      "importPath": "..schemas",
+      "line": 5,
+      "message": "packages",
+      "resolvedPath": "shop/schemas.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/api/routes.py",
+      "fingerprint": "contract-package|packages|shop/api/routes.py|fastapi|fastapi",
+      "importPath": "fastapi",
+      "line": 1,
+      "message": "packages",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/api/routes.py",
+      "fingerprint": "contract-package|packages|shop/api/routes.py|shop.services|shop",
+      "importPath": "shop.services",
+      "line": 3,
+      "message": "packages",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/api/routes.py",
+      "fingerprint": "contract-package|packages|shop/api/routes.py|shop.services.orders|shop",
+      "importPath": "shop.services.orders",
+      "line": 3,
+      "message": "packages",
+      "resolvedPath": "shop/services/orders.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/db/session.py",
+      "fingerprint": "contract-package|packages|shop/db/session.py|sqlalchemy|sqlalchemy",
+      "importPath": "sqlalchemy",
+      "line": 1,
+      "message": "packages",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/schemas.py",
+      "fingerprint": "contract-package|packages|shop/schemas.py|pydantic|pydantic",
+      "importPath": "pydantic",
+      "line": 1,
+      "message": "packages",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/services/orders.py",
+      "fingerprint": "contract-package|packages|shop/services/orders.py|shop.api|shop",
+      "importPath": "shop.api",
+      "line": 6,
+      "message": "packages",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/services/orders.py",
+      "fingerprint": "contract-package|packages|shop/services/orders.py|shop.api.routes|shop",
+      "importPath": "shop.api.routes",
+      "line": 6,
+      "message": "packages",
+      "resolvedPath": "shop/api/routes.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/services/orders.py",
+      "fingerprint": "contract-package|packages|shop/services/orders.py|shop.db|shop",
+      "importPath": "shop.db",
+      "line": 3,
+      "message": "packages",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "shop/services/orders.py",
+      "fingerprint": "contract-package|packages|shop/services/orders.py|shop.db.session|shop",
+      "importPath": "shop.db.session",
+      "line": 3,
+      "message": "packages",
+      "resolvedPath": "shop/db/session.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "tests/test_orders.py",
+      "fingerprint": "contract-package|packages|tests/test_orders.py|shop.services.orders|shop",
+      "importPath": "shop.services.orders",
+      "line": 1,
+      "message": "packages",
+      "resolvedPath": "shop/services/orders.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
       "file": "pyproject.toml",
       "fingerprint": "budget|lines|pyproject.toml|lines",
       "importPath": "budget:lines",
@@ -2509,7 +2722,7 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "confidence": "medium",
         "evidence": [
           "file pattern: (?:^|\\/)(?:config|configs|configuration)(?:\\/|[^/]*$)|(?:^|\\/)[^/]+\\.config\\.[cm]?[jt]sx?$",
-          "configuration files and loaders",
+          "configs",
         ],
         "files": [
           "shop/settings/config.py",
@@ -2518,11 +2731,25 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "packages": [],
         "status": "observed",
       },
+      "dependencies": {
+        "confidence": "high",
+        "evidence": [
+          "package manifest and lockfile metadata",
+        ],
+        "files": [],
+        "imports": [],
+        "packages": [
+          "fastapi",
+          "pydantic",
+          "sqlalchemy",
+        ],
+        "status": "observed",
+      },
       "identity": {
         "confidence": "medium",
         "evidence": [
           "file pattern: (?:^|\\/)(?:auth|authentication|identity|session)(?:\\/|[^/]*$)",
-          "identity and session conventions",
+          "Python authentication integrations",
         ],
         "files": [
           "shop/db/session.py",
@@ -2532,18 +2759,40 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "status": "observed",
       },
       "persistence": {
-        "confidence": "medium",
+        "confidence": "high",
         "evidence": [
+          "dependency: sqlalchemy",
           "file pattern: (?:^|\\/)(?:db|database|repositories|schema|schemas|migrations|drizzle)(?:\\/|[^/]*$)",
-          "database and ORM conventions",
+          "import pattern: ^(sqlalchemy|sqlmodel|django\\.db|psycopg|psycopg2|asyncpg|alembic|peewee|pymongo)(\\.|$)",
+          "Python database and ORM integrations",
         ],
         "files": [
           "shop/db/__init__.py",
           "shop/db/session.py",
           "shop/schemas.py",
         ],
-        "imports": [],
-        "packages": [],
+        "imports": [
+          "sqlalchemy",
+        ],
+        "packages": [
+          "sqlalchemy",
+        ],
+        "status": "observed",
+      },
+      "routing": {
+        "confidence": "high",
+        "evidence": [
+          "dependency: fastapi",
+          "import pattern: ^(django\\.urls|fastapi|flask|starlette\\.routing)(\\.|$)",
+          "Python routing integrations",
+        ],
+        "files": [],
+        "imports": [
+          "fastapi",
+        ],
+        "packages": [
+          "fastapi",
+        ],
         "status": "observed",
       },
       "runtime": {
@@ -2555,21 +2804,28 @@ exports[`fixture model and policy baseline > python-app 1`] = `
           "pyproject.toml",
           "requirements.txt",
         ],
-        "imports": [],
-        "packages": [],
+        "imports": [
+          "fastapi",
+        ],
+        "packages": [
+          "fastapi",
+        ],
         "status": "observed",
       },
       "testing": {
         "confidence": "medium",
         "evidence": [
           "file pattern: (?:^|\\/)(?:__tests__|tests?|e2e)(?:\\/|[^/]*$)|\\.(?:test|spec)\\.",
-          "test runner and test layout conventions",
+          "import pattern: ^(pytest|hypothesis|unittest|coverage)(\\.|$)",
+          "Python test tools",
         ],
         "files": [
           "tests/conftest.py",
           "tests/test_orders.py",
         ],
-        "imports": [],
+        "imports": [
+          "pytest",
+        ],
         "packages": [],
         "status": "observed",
       },
@@ -2679,8 +2935,33 @@ exports[`fixture model and policy baseline > python-app 1`] = `
           "to": "shop/services/orders.py",
         },
       ],
-      "envReferences": [],
-      "impactPaths": [],
+      "envReferences": [
+        {
+          "declared": false,
+          "files": [
+            "shop/settings/config.py",
+          ],
+          "name": "DATABASE_URL",
+        },
+      ],
+      "impactPaths": [
+        {
+          "boundaries": [],
+          "entrypoint": "shop/api/routes.py",
+          "files": [
+            "shop/api/routes.py",
+            "shop/db/session.py",
+            "shop/schemas.py",
+            "shop/services/orders.py",
+          ],
+          "layers": [
+            "routes",
+            "infrastructure",
+            "other",
+            "application",
+          ],
+        },
+      ],
       "importHotspots": [
         {
           "count": 1,
@@ -2800,15 +3081,26 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "imports": [
           ".services.orders",
         ],
-        "parseFacts": [
-          {
-            "line": 3,
-            "module": ".services.orders",
-            "names": [
-              "OrderService",
-            ],
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 3,
+              "module": ".services.orders",
+              "names": [
+                "OrderService",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "OrderService": ".services.orders.OrderService",
+            },
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "shop/__init__.py",
         "resolvedImportMap": {
           ".services.orders": "shop/services/orders.py",
@@ -2835,14 +3127,26 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "shop/api/__init__.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "APIRouter",
+          "orders.OrderService",
+        ],
         "canonicalImports": {
           "..schemas": "shop.schemas",
         },
@@ -2874,29 +3178,50 @@ exports[`fixture model and policy baseline > python-app 1`] = `
           "shop.services",
           "shop.services.orders",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "fastapi",
-            "names": [
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "fastapi",
+              "names": [
+                "APIRouter",
+              ],
+            },
+            {
+              "line": 3,
+              "module": "shop.services",
+              "names": [
+                "orders",
+              ],
+            },
+            {
+              "line": 5,
+              "module": "..schemas",
+              "names": [
+                "OrderIn",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "APIRouter": "fastapi.APIRouter",
+              "OrderIn": "..schemas.OrderIn",
+              "orders": "shop.services.orders",
+            },
+            "calls": [
               "APIRouter",
+              "orders.OrderService",
             ],
-          },
-          {
-            "line": 3,
-            "module": "shop.services",
-            "names": [
-              "orders",
+            "decorators": [
+              {
+                "arguments": ""/orders"",
+                "callee": "router.post",
+              },
             ],
+            "environment": [],
+            "registrations": [],
           },
-          {
-            "line": 5,
-            "module": "..schemas",
-            "names": [
-              "OrderIn",
-            ],
-          },
-        ],
+        },
         "path": "shop/api/routes.py",
         "resolvedImportMap": {
           "..schemas": "shop/schemas.py",
@@ -2925,7 +3250,16 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "shop/db/__init__.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -2954,12 +3288,23 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "imports": [
           "sqlalchemy",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "sqlalchemy",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "sqlalchemy",
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "sqlalchemy": "sqlalchemy",
+            },
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "shop/db/session.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -2988,15 +3333,26 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "imports": [
           "pydantic",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "pydantic",
-            "names": [
-              "BaseModel",
-            ],
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "pydantic",
+              "names": [
+                "BaseModel",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "BaseModel": "pydantic.BaseModel",
+            },
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "shop/schemas.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -3019,14 +3375,25 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "shop/services/__init__.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "session.save",
+        ],
         "canonicalImports": undefined,
         "contentHash": "06b9c140fba3dcb180a906709261a2bb3e7657cb816859e58d29dad582d5dc25",
         "declarations": {
@@ -3058,29 +3425,44 @@ exports[`fixture model and policy baseline > python-app 1`] = `
           "shop.db.session",
           "typing",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "typing",
-            "names": [
-              "TYPE_CHECKING",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "typing",
+              "names": [
+                "TYPE_CHECKING",
+              ],
+            },
+            {
+              "line": 3,
+              "module": "shop.db",
+              "names": [
+                "session",
+              ],
+            },
+            {
+              "line": 6,
+              "module": "shop.api",
+              "names": [
+                "routes",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "TYPE_CHECKING": "typing.TYPE_CHECKING",
+              "routes": "shop.api.routes",
+              "session": "shop.db.session",
+            },
+            "calls": [
+              "session.save",
             ],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-          {
-            "line": 3,
-            "module": "shop.db",
-            "names": [
-              "session",
-            ],
-          },
-          {
-            "line": 6,
-            "module": "shop.api",
-            "names": [
-              "routes",
-            ],
-          },
-        ],
+        },
         "path": "shop/services/orders.py",
         "resolvedImportMap": {
           "shop.api.routes": "shop/api/routes.py",
@@ -3093,7 +3475,9 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "os.environ.get",
+        ],
         "canonicalImports": undefined,
         "contentHash": "875fc654edca9eaea9acca4b1867509b2aed46fe656a45b43a789f2dbb9ffb56",
         "declarations": {
@@ -3115,12 +3499,32 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "imports": [
           "os",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "os",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "os",
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "os": "os",
+            },
+            "calls": [
+              "os.environ.get",
+            ],
+            "decorators": [],
+            "environment": [
+              "DATABASE_URL",
+            ],
+            "registrations": [
+              {
+                "arguments": ""DATABASE_URL", "sqlite://"",
+                "callee": "os.environ.get",
+              },
+            ],
           },
-        ],
+        },
         "path": "shop/settings/config.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -3149,19 +3553,33 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "imports": [
           "pytest",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "pytest",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "pytest",
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "pytest": "pytest",
+            },
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "tests/conftest.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "OrderService",
+          "object",
+        ],
         "canonicalImports": undefined,
         "contentHash": "fb29a17e89a36ad30cb356cdc3c59c22b05f56df6e95882c576456a598995e80",
         "declarations": {
@@ -3183,15 +3601,29 @@ exports[`fixture model and policy baseline > python-app 1`] = `
         "imports": [
           "shop.services.orders",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "shop.services.orders",
-            "names": [
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "shop.services.orders",
+              "names": [
+                "OrderService",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "OrderService": "shop.services.orders.OrderService",
+            },
+            "calls": [
               "OrderService",
+              "object",
             ],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "tests/test_orders.py",
         "resolvedImportMap": {
           "shop.services.orders": "shop/services/orders.py",
@@ -3206,16 +3638,71 @@ exports[`fixture model and policy baseline > python-app 1`] = `
       "barrelFiles": [],
       "clientComponents": [],
       "importGraphEdges": 15,
-      "routeDetails": [],
-      "routeHandlers": [],
+      "routeDetails": [
+        {
+          "methods": [
+            "POST",
+          ],
+          "path": "shop/api/routes.py",
+        },
+      ],
+      "routeHandlers": [
+        "shop/api/routes.py",
+      ],
       "serverActions": [],
     },
     "project": {
-      "dependencies": {},
+      "dependencies": {
+        "fastapi": "*",
+        "pydantic": "*",
+        "sqlalchemy": "*",
+      },
       "devDependencies": {},
-      "frameworks": [],
+      "frameworks": [
+        "FastAPI",
+        "SQLAlchemy",
+      ],
+      "name": "shop",
+      "packageManager": "pip",
       "scripts": {},
-      "workspacePackages": [],
+      "workspacePackages": [
+        {
+          "dependencies": [
+            "fastapi",
+            "pydantic",
+            "sqlalchemy",
+          ],
+          "dependencyDeclarations": [
+            {
+              "group": "runtime",
+              "name": "fastapi",
+              "requirement": "fastapi",
+              "source": "requirements.txt",
+              "writtenName": "fastapi",
+            },
+            {
+              "group": "runtime",
+              "name": "pydantic",
+              "requirement": "pydantic",
+              "source": "requirements.txt",
+              "writtenName": "pydantic",
+            },
+            {
+              "group": "runtime",
+              "name": "sqlalchemy",
+              "requirement": "sqlalchemy",
+              "source": "requirements.txt",
+              "writtenName": "sqlalchemy",
+            },
+          ],
+          "ecosystem": "python",
+          "entrypoints": [],
+          "name": "shop",
+          "path": ".",
+          "private": false,
+          "scripts": {},
+        },
+      ],
     },
     "schemas": [],
     "tests": {
@@ -3232,16 +3719,6 @@ exports[`fixture model and policy baseline > python-app 1`] = `
       "modules": 9,
       "reason": "Discovery does not collect directives for these modules.",
       "ruleId": "client-forbidden-import",
-    },
-    {
-      "modules": 11,
-      "reason": "Discovery does not collect calls for these modules.",
-      "ruleId": "contract:calls",
-    },
-    {
-      "modules": 11,
-      "reason": "Discovery does not collect package membership for these modules.",
-      "ruleId": "contract:packages",
     },
   ],
 }
@@ -3534,6 +4011,129 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
     },
     {
       "file": "json.py",
+      "fingerprint": "contract-required-call|calls|json.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "libs/a/common/helpers.py",
+      "fingerprint": "contract-required-call|calls|libs/a/common/helpers.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "libs/b/common/helpers.py",
+      "fingerprint": "contract-required-call|calls|libs/b/common/helpers.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "main.py",
+      "fingerprint": "contract-required-call|calls|main.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "pkg/__init__.py",
+      "fingerprint": "contract-required-call|calls|pkg/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "pkg/core.py",
+      "fingerprint": "contract-required-call|calls|pkg/core.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "pkg/my-module.py",
+      "fingerprint": "contract-required-call|calls|pkg/my-module.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "main.py",
+      "fingerprint": "contract-package|packages|main.py|json|edge",
+      "importPath": "json",
+      "line": 1,
+      "message": "packages",
+      "resolvedPath": "json.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "main.py",
+      "fingerprint": "contract-package|packages|main.py|pkg|edge",
+      "importPath": "pkg",
+      "line": 2,
+      "message": "packages",
+      "resolvedPath": "pkg/__init__.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "main.py",
+      "fingerprint": "contract-package|packages|main.py|pkg.core|edge",
+      "importPath": "pkg.core",
+      "line": 3,
+      "message": "packages",
+      "resolvedPath": "pkg/core.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "pkg/__init__.py",
+      "fingerprint": "contract-package|packages|pkg/__init__.py|.core|edge",
+      "importPath": ".core",
+      "line": 1,
+      "message": "packages",
+      "resolvedPath": "pkg/core.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "pkg/__init__.py",
+      "fingerprint": "contract-package|packages|pkg/__init__.py|.helpers|edge",
+      "importPath": ".helpers",
+      "line": 2,
+      "message": "packages",
+      "resolvedPath": "pkg/helpers.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "pkg/core.py",
+      "fingerprint": "contract-package|packages|pkg/core.py|pkg.helpers|edge",
+      "importPath": "pkg.helpers",
+      "line": 3,
+      "message": "packages",
+      "resolvedPath": "pkg/helpers.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "json.py",
       "fingerprint": "budget|lines|json.py|lines",
       "importPath": "budget:lines",
       "line": 1,
@@ -3743,7 +4343,7 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
   "model": {
     "capabilities": {
       "runtime": {
-        "confidence": "high",
+        "confidence": "medium",
         "evidence": [
           "package metadata and runtime imports",
         ],
@@ -3910,7 +4510,16 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "json.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -3933,7 +4542,16 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "libs/a/common/helpers.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -3956,7 +4574,16 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "libs/b/common/helpers.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -3995,34 +4622,49 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
           "pkg",
           "pkg.core",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "json",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "json",
+            },
+            {
+              "line": 2,
+              "module": "pkg",
+            },
+            {
+              "line": 3,
+              "module": "pkg",
+              "names": [
+                "core",
+              ],
+            },
+            {
+              "line": 4,
+              "module": "pkg",
+              "names": [
+                "run",
+              ],
+            },
+            {
+              "line": 5,
+              "module": "common.helpers",
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "common": "common",
+              "core": "pkg.core",
+              "json": "json",
+              "pkg": "pkg",
+              "run": "pkg.run",
+            },
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-          {
-            "line": 2,
-            "module": "pkg",
-          },
-          {
-            "line": 3,
-            "module": "pkg",
-            "names": [
-              "core",
-            ],
-          },
-          {
-            "line": 4,
-            "module": "pkg",
-            "names": [
-              "run",
-            ],
-          },
-          {
-            "line": 5,
-            "module": "common.helpers",
-          },
-        ],
+        },
         "path": "main.py",
         "resolvedImportMap": {
           "json": "json.py",
@@ -4070,22 +4712,34 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
           ".core",
           ".helpers",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": ".core",
-            "names": [
-              "run",
-            ],
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": ".core",
+              "names": [
+                "run",
+              ],
+            },
+            {
+              "line": 2,
+              "module": ".",
+              "names": [
+                "helpers",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "helpers": "..helpers",
+              "run": ".core.run",
+            },
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-          {
-            "line": 2,
-            "module": ".",
-            "names": [
-              "helpers",
-            ],
-          },
-        ],
+        },
         "path": "pkg/__init__.py",
         "resolvedImportMap": {
           ".core": "pkg/core.py",
@@ -4098,7 +4752,9 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "h.help",
+        ],
         "canonicalImports": {
           ".missing": "pkg.missing",
         },
@@ -4128,26 +4784,41 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
           ".missing",
           "pkg.helpers",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": ".missing",
-            "names": [
-              "thing",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": ".missing",
+              "names": [
+                "thing",
+              ],
+            },
+            {
+              "line": 2,
+              "module": "...",
+              "names": [
+                "above_root",
+              ],
+            },
+            {
+              "line": 3,
+              "module": "pkg.helpers",
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "above_root": "....above_root",
+              "h": "pkg.helpers",
+              "thing": ".missing.thing",
+            },
+            "calls": [
+              "h.help",
             ],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-          {
-            "line": 2,
-            "module": "...",
-            "names": [
-              "above_root",
-            ],
-          },
-          {
-            "line": 3,
-            "module": "pkg.helpers",
-          },
-        ],
+        },
         "path": "pkg/core.py",
         "resolvedImportMap": {
           "pkg.helpers": "pkg/helpers.py",
@@ -4161,7 +4832,9 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
         ],
       },
       {
-        "calls": [],
+        "calls": [
+          "logging.info",
+        ],
         "canonicalImports": undefined,
         "contentHash": "f4e4acacb0ab3d4750427164200df226baa76b706d3c290c34f7ed5e05350c34",
         "declarations": {
@@ -4183,15 +4856,31 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
         "imports": [
           "logging",
         ],
+        "incompleteFacts": [
+          "calls",
+        ],
         "parseDiagnostics": [
           1,
         ],
-        "parseFacts": [
-          {
-            "line": 4,
-            "module": "logging",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 4,
+              "module": "logging",
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "logging": "logging",
+            },
+            "calls": [
+              "logging.info",
+            ],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "pkg/helpers.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -4214,7 +4903,16 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "pkg/my-module.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -4233,8 +4931,40 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
       "dependencies": {},
       "devDependencies": {},
       "frameworks": [],
+      "name": "edge",
       "scripts": {},
-      "workspacePackages": [],
+      "workspacePackages": [
+        {
+          "dependencies": [],
+          "dependencyDeclarations": [],
+          "ecosystem": "python",
+          "entrypoints": [],
+          "name": "edge",
+          "path": ".",
+          "private": false,
+          "scripts": {},
+        },
+        {
+          "dependencies": [],
+          "dependencyDeclarations": [],
+          "ecosystem": "python",
+          "entrypoints": [],
+          "name": "a",
+          "path": "libs/a",
+          "private": false,
+          "scripts": {},
+        },
+        {
+          "dependencies": [],
+          "dependencyDeclarations": [],
+          "ecosystem": "python",
+          "entrypoints": [],
+          "name": "b",
+          "path": "libs/b",
+          "private": false,
+          "scripts": {},
+        },
+      ],
     },
     "schemas": [],
     "tests": {
@@ -4250,14 +4980,9 @@ exports[`fixture model and policy baseline > python-edge-cases 1`] = `
       "ruleId": "client-forbidden-import",
     },
     {
-      "modules": 8,
-      "reason": "Discovery does not collect calls for these modules.",
+      "modules": 1,
+      "reason": "Call analysis is incomplete because the module has parse diagnostics.",
       "ruleId": "contract:calls",
-    },
-    {
-      "modules": 8,
-      "reason": "Discovery does not collect package membership for these modules.",
-      "ruleId": "contract:packages",
     },
   ],
 }
@@ -4399,6 +5124,42 @@ exports[`fixture model and policy baseline > python-mixed 1`] = `
       "severity": "error",
     },
     {
+      "file": "backend/app/__init__.py",
+      "fingerprint": "contract-required-call|calls|backend/app/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "backend/app/main.py",
+      "fingerprint": "contract-required-call|calls|backend/app/main.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "backend/app/models.py",
+      "fingerprint": "contract-required-call|calls|backend/app/models.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "backend/app/routes.py",
+      "fingerprint": "contract-required-call|calls|backend/app/routes.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
       "file": "web/src/api.ts",
       "fingerprint": "contract-required-call|calls|web/src/api.ts",
       "importPath": "contract",
@@ -4414,6 +5175,26 @@ exports[`fixture model and policy baseline > python-mixed 1`] = `
       "line": 1,
       "message": "calls",
       "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "backend/app/main.py",
+      "fingerprint": "contract-package|packages|backend/app/main.py|app.routes|backend",
+      "importPath": "app.routes",
+      "line": 1,
+      "message": "packages",
+      "resolvedPath": "backend/app/routes.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "backend/app/routes.py",
+      "fingerprint": "contract-package|packages|backend/app/routes.py|.models|backend",
+      "importPath": ".models",
+      "line": 1,
+      "message": "packages",
+      "resolvedPath": "backend/app/models.py",
+      "ruleId": "contract:packages",
       "severity": "error",
     },
     {
@@ -4702,14 +5483,25 @@ exports[`fixture model and policy baseline > python-mixed 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "backend/app/__init__.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "routes.build",
+        ],
         "canonicalImports": undefined,
         "contentHash": "5c13ef8239442ccc3f38e3db330b0712d97217a79277c6005665fc520af90401",
         "declarations": {
@@ -4733,15 +5525,28 @@ exports[`fixture model and policy baseline > python-mixed 1`] = `
           "app",
           "app.routes",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "app",
-            "names": [
-              "routes",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "app",
+              "names": [
+                "routes",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "routes": "app.routes",
+            },
+            "calls": [
+              "routes.build",
             ],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "backend/app/main.py",
         "resolvedImportMap": {
           "app.routes": "backend/app/routes.py",
@@ -4768,7 +5573,16 @@ exports[`fixture model and policy baseline > python-mixed 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "backend/app/models.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -4799,15 +5613,26 @@ exports[`fixture model and policy baseline > python-mixed 1`] = `
         "imports": [
           ".models",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": ".models",
-            "names": [
-              "Order",
-            ],
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": ".models",
+              "names": [
+                "Order",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "Order": ".models.Order",
+            },
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "backend/app/routes.py",
         "resolvedImportMap": {
           ".models": "backend/app/models.py",
@@ -4887,7 +5712,18 @@ exports[`fixture model and policy baseline > python-mixed 1`] = `
       "frameworks": [],
       "name": "mixed-web",
       "scripts": {},
-      "workspacePackages": [],
+      "workspacePackages": [
+        {
+          "dependencies": [],
+          "dependencyDeclarations": [],
+          "ecosystem": "python",
+          "entrypoints": [],
+          "name": "backend",
+          "path": "backend",
+          "private": false,
+          "scripts": {},
+        },
+      ],
     },
     "schemas": [],
     "tests": {
@@ -4901,16 +5737,6 @@ exports[`fixture model and policy baseline > python-mixed 1`] = `
       "modules": 4,
       "reason": "Discovery does not collect directives for these modules.",
       "ruleId": "client-forbidden-import",
-    },
-    {
-      "modules": 4,
-      "reason": "Discovery does not collect calls for these modules.",
-      "ruleId": "contract:calls",
-    },
-    {
-      "modules": 4,
-      "reason": "Discovery does not collect package membership for these modules.",
-      "ruleId": "contract:packages",
     },
   ],
 }
@@ -5068,6 +5894,80 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
       "severity": "error",
     },
     {
+      "file": "packages/billing/src/company/billing/__init__.py",
+      "fingerprint": "contract-required-call|calls|packages/billing/src/company/billing/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "packages/billing/src/company/billing/service.py",
+      "fingerprint": "contract-required-call|calls|packages/billing/src/company/billing/service.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "packages/users/src/company/users/__init__.py",
+      "fingerprint": "contract-required-call|calls|packages/users/src/company/users/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "packages/users/src/company/users/service.py",
+      "fingerprint": "contract-required-call|calls|packages/users/src/company/users/service.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "services/worker/worker/__init__.py",
+      "fingerprint": "contract-required-call|calls|services/worker/worker/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "services/worker/worker/main.py",
+      "fingerprint": "contract-required-call|calls|services/worker/worker/main.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "packages/billing/src/company/billing/service.py",
+      "fingerprint": "contract-package|packages|packages/billing/src/company/billing/service.py|company.users.service|company-users",
+      "importPath": "company.users.service",
+      "line": 1,
+      "message": "packages",
+      "resolvedPath": "packages/users/src/company/users/service.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "services/worker/worker/main.py",
+      "fingerprint": "contract-package|packages|services/worker/worker/main.py|company.billing.service|company-billing",
+      "importPath": "company.billing.service",
+      "line": 1,
+      "message": "packages",
+      "resolvedPath": "packages/billing/src/company/billing/service.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
       "file": "packages/billing/pyproject.toml",
       "fingerprint": "budget|lines|packages/billing/pyproject.toml|lines",
       "importPath": "budget:lines",
@@ -5200,7 +6100,7 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
         "confidence": "medium",
         "evidence": [
           "file pattern: (?:^|\\/)(?:jobs|queues|queue|workers|worker|background|tasks)(?:\\/|[^/]*$)",
-          "background job and queue conventions",
+          "Python background jobs",
         ],
         "files": [
           "services/worker/pyproject.toml",
@@ -5215,7 +6115,7 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
         "confidence": "medium",
         "evidence": [
           "file pattern: (?:^|\\/)(?:billing|payment|payments|checkout|subscription|subscriptions)(?:\\/|[^/]*$)",
-          "payment provider conventions",
+          "Python payment providers",
         ],
         "files": [
           "packages/billing/pyproject.toml",
@@ -5227,7 +6127,7 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
         "status": "observed",
       },
       "runtime": {
-        "confidence": "high",
+        "confidence": "medium",
         "evidence": [
           "package metadata and runtime imports",
         ],
@@ -5368,14 +6268,25 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "packages/billing/src/company/billing/__init__.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "users.lookup",
+        ],
         "canonicalImports": undefined,
         "contentHash": "8aa8ff9513b53e91dc55b831dd0429f003877436c4edfdcdd6cd8476664c10db",
         "declarations": {
@@ -5399,15 +6310,28 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
           "company.users",
           "company.users.service",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "company.users",
-            "names": [
-              "service",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "company.users",
+              "names": [
+                "service",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "users": "company.users.service",
+            },
+            "calls": [
+              "users.lookup",
             ],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "packages/billing/src/company/billing/service.py",
         "resolvedImportMap": {
           "company.users.service": "packages/users/src/company/users/service.py",
@@ -5434,7 +6358,16 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "packages/users/src/company/users/__init__.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -5463,12 +6396,23 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
         "imports": [
           "requests",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "requests",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "requests",
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "requests": "requests",
+            },
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "packages/users/src/company/users/service.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
@@ -5491,14 +6435,25 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "services/worker/worker/__init__.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "service.invoice",
+        ],
         "canonicalImports": undefined,
         "contentHash": "64e3e462c21db7395774e0b3364d7b2e51e8397eae20cc684ea2737b0be8bfdf",
         "declarations": {
@@ -5522,15 +6477,28 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
           "company.billing",
           "company.billing.service",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "company.billing",
-            "names": [
-              "service",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "company.billing",
+              "names": [
+                "service",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "service": "company.billing.service",
+            },
+            "calls": [
+              "service.invoice",
             ],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "services/worker/worker/main.py",
         "resolvedImportMap": {
           "company.billing.service": "packages/billing/src/company/billing/service.py",
@@ -5553,8 +6521,40 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
       "dependencies": {},
       "devDependencies": {},
       "frameworks": [],
+      "name": "company-billing",
       "scripts": {},
-      "workspacePackages": [],
+      "workspacePackages": [
+        {
+          "dependencies": [],
+          "dependencyDeclarations": [],
+          "ecosystem": "python",
+          "entrypoints": [],
+          "name": "company-billing",
+          "path": "packages/billing",
+          "private": false,
+          "scripts": {},
+        },
+        {
+          "dependencies": [],
+          "dependencyDeclarations": [],
+          "ecosystem": "python",
+          "entrypoints": [],
+          "name": "company-users",
+          "path": "packages/users",
+          "private": false,
+          "scripts": {},
+        },
+        {
+          "dependencies": [],
+          "dependencyDeclarations": [],
+          "ecosystem": "python",
+          "entrypoints": [],
+          "name": "worker",
+          "path": "services/worker",
+          "private": false,
+          "scripts": {},
+        },
+      ],
     },
     "schemas": [],
     "tests": {
@@ -5568,16 +6568,6 @@ exports[`fixture model and policy baseline > python-monorepo 1`] = `
       "modules": 6,
       "reason": "Discovery does not collect directives for these modules.",
       "ruleId": "client-forbidden-import",
-    },
-    {
-      "modules": 6,
-      "reason": "Discovery does not collect calls for these modules.",
-      "ruleId": "contract:calls",
-    },
-    {
-      "modules": 6,
-      "reason": "Discovery does not collect package membership for these modules.",
-      "ruleId": "contract:packages",
     },
   ],
 }
@@ -5671,6 +6661,71 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
       "severity": "error",
     },
     {
+      "file": "src/inventory/__init__.py",
+      "fingerprint": "contract-required-call|calls|src/inventory/__init__.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "src/inventory/core.py",
+      "fingerprint": "contract-required-call|calls|src/inventory/core.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "src/inventory/storage.py",
+      "fingerprint": "contract-required-call|calls|src/inventory/storage.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "tests/test_core.py",
+      "fingerprint": "contract-required-call|calls|tests/test_core.py",
+      "importPath": "contract",
+      "line": 1,
+      "message": "calls",
+      "ruleId": "contract:calls",
+      "severity": "error",
+    },
+    {
+      "file": "src/inventory/core.py",
+      "fingerprint": "contract-package|packages|src/inventory/core.py|inventory|inventory",
+      "importPath": "inventory",
+      "line": 1,
+      "message": "packages",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "src/inventory/core.py",
+      "fingerprint": "contract-package|packages|src/inventory/core.py|inventory.storage|inventory",
+      "importPath": "inventory.storage",
+      "line": 1,
+      "message": "packages",
+      "resolvedPath": "src/inventory/storage.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
+      "file": "tests/test_core.py",
+      "fingerprint": "contract-package|packages|tests/test_core.py|inventory.core|inventory",
+      "importPath": "inventory.core",
+      "line": 1,
+      "message": "packages",
+      "resolvedPath": "src/inventory/core.py",
+      "ruleId": "contract:packages",
+      "severity": "error",
+    },
+    {
       "file": "pyproject.toml",
       "fingerprint": "budget|lines|pyproject.toml|lines",
       "importPath": "budget:lines",
@@ -5755,7 +6810,7 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
   "model": {
     "capabilities": {
       "runtime": {
-        "confidence": "high",
+        "confidence": "medium",
         "evidence": [
           "package metadata and runtime imports",
         ],
@@ -5770,7 +6825,7 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
         "confidence": "medium",
         "evidence": [
           "file pattern: (?:^|\\/)(?:storage|uploads?|media|assets)(?:\\/|[^/]*$)",
-          "file and object storage conventions",
+          "storage",
         ],
         "files": [
           "src/inventory/storage.py",
@@ -5783,7 +6838,7 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
         "confidence": "medium",
         "evidence": [
           "file pattern: (?:^|\\/)(?:__tests__|tests?|e2e)(?:\\/|[^/]*$)|\\.(?:test|spec)\\.",
-          "test runner and test layout conventions",
+          "Python test tools",
         ],
         "files": [
           "tests/test_core.py",
@@ -5891,14 +6946,25 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "src/inventory/__init__.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "len",
+        ],
         "canonicalImports": undefined,
         "contentHash": "80b5422c46e7c0fce259f8031028cd4996da4b0bb3a7b5bce5b37b290d50ceaa",
         "declarations": {
@@ -5922,15 +6988,28 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
           "inventory",
           "inventory.storage",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "inventory",
-            "names": [
-              "storage",
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "inventory",
+              "names": [
+                "storage",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "storage": "inventory.storage",
+            },
+            "calls": [
+              "len",
             ],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "src/inventory/core.py",
         "resolvedImportMap": {
           "inventory.storage": "src/inventory/storage.py",
@@ -5957,14 +7036,25 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
         "importLines": {},
         "importedSymbols": [],
         "imports": [],
-        "parseFacts": [],
+        "parseFacts": {
+          "imports": [],
+          "syntax": {
+            "bindings": {},
+            "calls": [],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
+          },
+        },
         "path": "src/inventory/storage.py",
         "resolvedImportMap": {},
         "resolvedImports": [],
         "unresolvedImports": [],
       },
       {
-        "calls": [],
+        "calls": [
+          "count",
+        ],
         "canonicalImports": undefined,
         "contentHash": "a1069df8637a77e7b6b2aae4e2c943c152ce0c63c686d294d3ba13e1b149dacf",
         "declarations": {
@@ -5986,15 +7076,28 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
         "imports": [
           "inventory.core",
         ],
-        "parseFacts": [
-          {
-            "line": 1,
-            "module": "inventory.core",
-            "names": [
+        "parseFacts": {
+          "imports": [
+            {
+              "line": 1,
+              "module": "inventory.core",
+              "names": [
+                "count",
+              ],
+            },
+          ],
+          "syntax": {
+            "bindings": {
+              "count": "inventory.core.count",
+            },
+            "calls": [
               "count",
             ],
+            "decorators": [],
+            "environment": [],
+            "registrations": [],
           },
-        ],
+        },
         "path": "tests/test_core.py",
         "resolvedImportMap": {
           "inventory.core": "src/inventory/core.py",
@@ -6017,8 +7120,20 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
       "dependencies": {},
       "devDependencies": {},
       "frameworks": [],
+      "name": "inventory",
       "scripts": {},
-      "workspacePackages": [],
+      "workspacePackages": [
+        {
+          "dependencies": [],
+          "dependencyDeclarations": [],
+          "ecosystem": "python",
+          "entrypoints": [],
+          "name": "inventory",
+          "path": ".",
+          "private": false,
+          "scripts": {},
+        },
+      ],
     },
     "schemas": [],
     "tests": {
@@ -6034,16 +7149,6 @@ exports[`fixture model and policy baseline > python-src-layout 1`] = `
       "modules": 3,
       "reason": "Discovery does not collect directives for these modules.",
       "ruleId": "client-forbidden-import",
-    },
-    {
-      "modules": 4,
-      "reason": "Discovery does not collect calls for these modules.",
-      "ruleId": "contract:calls",
-    },
-    {
-      "modules": 4,
-      "reason": "Discovery does not collect package membership for these modules.",
-      "ruleId": "contract:packages",
     },
   ],
 }

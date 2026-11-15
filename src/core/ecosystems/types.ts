@@ -12,6 +12,7 @@ export interface EcosystemProject {
   devDependencies: Record<string, string>;
   scripts: Record<string, string>;
   packages: WorkspacePackage[];
+  diagnostics?: { path: string; message: string }[];
 }
 export interface ProjectCheckMetadata {
   engines?: { node?: string | undefined } | undefined;
@@ -20,6 +21,9 @@ export interface ProjectCheckMetadata {
 }
 export interface EcosystemProvider {
   readonly id: string;
+  readonly protectedPaths?: readonly { pattern: string; kind: string }[];
+  readonly signals?: EcosystemSignals;
+  packageMatches?(name: string, source: string): boolean;
   readonly rootMarkers: readonly string[];
   readonly ignoredDirectories: readonly string[];
   readonly ignoredDirectorySuffixes?: readonly string[];
@@ -30,4 +34,10 @@ export interface EcosystemProvider {
   resolutionRoots?(paths: string[]): Record<string, string[]>;
   readProject(context: EcosystemContext): EcosystemProject | undefined;
   readCheckMetadata?(root: string): ProjectCheckMetadata;
+}
+
+export interface EcosystemSignals {
+  runtimeAlwaysObserved?: boolean;
+  frameworks: readonly { dependency: string; name: string; unless?: string }[];
+  capabilities: Partial<Record<string, { packages: RegExp; imports: RegExp; evidence: string }>>;
 }

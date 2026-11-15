@@ -17,8 +17,8 @@ It maps a JavaScript, TypeScript, or Python codebase, lets the team approve proj
 boundaries, and checks future changes locally and in CI. AI agents can use the same project context
 and verification results as developers.
 
-Python support covers static imports: the import graph, import rules and contracts, import budgets,
-and impact analysis. See [Python projects](docs/guard.md#python-projects) for the supported subset.
+Python support covers static imports, manifest metadata, package boundaries, call contracts,
+environment reads, framework entrypoints, generated boundary proposals, and impact analysis. See [Python projects](docs/guard.md#python-projects) for the supported subset.
 
 ### Catch project-specific regressions
 
